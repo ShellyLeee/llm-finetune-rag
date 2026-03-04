@@ -1,0 +1,49 @@
+# SFT QLoRA skeleton for LLaMA-Factory.
+# TODO: verify quantization-related field names against the installed LLaMA-Factory version.
+stage: sft
+do_train: true
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+template: qwen
+trust_remote_code: true
+
+dataset: demo_sft
+dataset_dir: data
+output_dir: runs/qwen2.5-7b/qlora_sft
+
+finetuning_type: lora
+quantization_bit: 4  # TODO: some versions may use quantization_bit / bits / load_in_4bit.
+double_quantization: true
+quantization_type: nf4
+
+lora_target: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+warmup_ratio: 0.03
+cutoff_len: 4096
+
+bf16: true
+fp16: false
+
+logging_steps: 10
+save_steps: 200
+eval_steps: 200
+save_total_limit: 3
+
+packing: false
+flash_attn: auto
+
+seed: 42
+report_to: tensorboard
+
+# Optional future extensions:
+# - bitsandbytes 4-bit backend
+# - AWQ / GPTQ inference-only flows
+# - paged optimizer tuning for constrained VRAM setups
+

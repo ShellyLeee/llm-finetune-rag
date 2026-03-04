@@ -1,0 +1,43 @@
+# SFT LoRA skeleton for LLaMA-Factory.
+# TODO: check field names against the exact LLaMA-Factory version installed on the server.
+stage: sft
+do_train: true
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+template: qwen
+trust_remote_code: true
+
+dataset: demo_sft
+dataset_dir: data
+output_dir: runs/qwen2.5-7b/lora_sft
+
+finetuning_type: lora
+lora_target: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj  # Tune as needed per model arch.
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+warmup_ratio: 0.03
+cutoff_len: 4096
+
+bf16: true  # Prefer bf16 on Ada/Hopper if the platform supports it.
+fp16: false
+
+logging_steps: 10
+save_steps: 200
+eval_steps: 200  # Optional; enable only if validation dataset is configured.
+save_total_limit: 3
+
+packing: false  # TODO: enable only if your LLaMA-Factory version supports stable packing for this model.
+flash_attn: auto  # TODO: switch to true/false explicitly if auto is unsupported.
+
+seed: 42
+report_to: tensorboard  # Alternative: wandb
+
+# DeepSpeed can be passed by launcher/script. Keep here for documentation if desired.
+# deepspeed: ds_config/zero2.json
+

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "demo_sft",
+  "input_rows": 0,
+  "kept_rows": 0,
+  "next_step": "Place your raw data under data/raw and rerun this script with --input."
+}

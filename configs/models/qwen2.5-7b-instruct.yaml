@@ -1,0 +1,7 @@
+# Reusable model-level defaults.
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+template: qwen  # TODO: align with the exact template name supported by your LLaMA-Factory version.
+trust_remote_code: true
+cutoff_len: 4096  # Suggestion for SFT; increase only after checking VRAM and RoPE settings.
+max_length: 4096  # Keep aligned with tokenizer/model support and dataset truncation strategy.
+

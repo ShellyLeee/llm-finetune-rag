@@ -1,0 +1,15 @@
+# Copy this file to add a new model config under configs/models/.
+# Examples: llama3-8b-instruct.yaml, mistral-7b-instruct.yaml, qwen3.5-14b.yaml
+#
+# Keep model-specific settings here so train configs stay small and reproducible.
+model_name_or_path: your-org/your-model
+template: your_template  # TODO: replace with a template supported by your LLaMA-Factory version.
+trust_remote_code: false
+cutoff_len: 4096
+max_length: 4096
+#
+# Optional model notes:
+# - For Llama-family models, confirm the correct chat template and EOS handling.
+# - For Mistral-family models, validate tokenizer padding side and flash attention compatibility.
+# - For future Qwen models, update template naming if LLaMA-Factory changes its registry.
+

@@ -1,0 +1,2 @@
+{"id": "dummy-1", "question": "What is supervised fine-tuning?", "reference": "Supervised fine-tuning adapts a pretrained model using labeled instruction-response data."}
+{"id": "dummy-2", "question": "What does RAG combine?", "reference": "RAG combines retrieval with generation."}

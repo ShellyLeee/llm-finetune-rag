@@ -1,0 +1,9 @@
+# Placeholder inference config for future chat / batch generation.
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+adapter_name_or_path: runs/qwen2.5-7b/lora_sft
+template: qwen
+trust_remote_code: true
+max_new_tokens: 512
+temperature: 0.7
+top_p: 0.9
+
