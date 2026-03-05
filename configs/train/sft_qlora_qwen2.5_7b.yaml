@@ -1,49 +1,45 @@
-# SFT QLoRA skeleton for LLaMA-Factory.
-# TODO: verify quantization-related field names against the installed LLaMA-Factory version.
-stage: sft
-do_train: true
-
+### model
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
-template: qwen
+quantization_bit: 4  # choices: [8 (bnb/hqq/eetq), 4 (bnb/hqq), 3 (hqq), 2 (hqq)]
+quantization_method: bnb  # choices: [bnb, hqq, eetq]
 trust_remote_code: true
 
-dataset: demo_sft
-dataset_dir: data
-output_dir: runs/qwen2.5-7b/qlora_sft
-
+### method
+stage: sft
+do_train: true
 finetuning_type: lora
-quantization_bit: 4  # TODO: some versions may use quantization_bit / bits / load_in_4bit.
-double_quantization: true
-quantization_type: nf4
+lora_rank: 8
+lora_target: all
 
-lora_target: q_proj,v_proj,k_proj,o_proj,gate_proj,up_proj,down_proj
-lora_r: 64
-lora_alpha: 128
-lora_dropout: 0.05
-
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 16
-learning_rate: 2.0e-4
-num_train_epochs: 3.0
-warmup_ratio: 0.03
+### dataset
+dataset: demo_sft
+template: qwen
 cutoff_len: 4096
+max_samples: 1000
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
 
-bf16: true
-fp16: false
-
+### output
+output_dir: runs/qwen2.5-7b/qlora_sft
 logging_steps: 10
-save_steps: 200
-eval_steps: 200
-save_total_limit: 3
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none  # choices: [none, wandb, tensorboard, swanlab, mlflow]
 
-packing: false
-flash_attn: auto
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
 
-seed: 42
-report_to: tensorboard
-
-# Optional future extensions:
-# - bitsandbytes 4-bit backend
-# - AWQ / GPTQ inference-only flows
-# - paged optimizer tuning for constrained VRAM setups
-
+### eval
+# val_size: 0.1
+# per_device_eval_batch_size: 1
+# eval_strategy: steps
+# eval_steps: 500
