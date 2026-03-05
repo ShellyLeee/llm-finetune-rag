@@ -12,31 +12,10 @@
       "assistant_tag": "assistant"
     }
   },
-  "demo_sft_dev_example": {
-    "file_name": "processed/dev.jsonl",
-    "formatting": "sharegpt",
-    "columns": {
-      "messages": "messages"
-    },
-    "tags": {
-      "role_tag": "role",
-      "content_tag": "content",
-      "user_tag": "user",
-      "assistant_tag": "assistant"
-    }
+  "alpaca_zh_demo": {
+    "file_name": "alpaca_zh_demo.json"
   },
-  "demo_sft_test_example": {
-    "file_name": "processed/test.jsonl",
-    "formatting": "sharegpt",
-    "columns": {
-      "messages": "messages"
-    },
-    "tags": {
-      "role_tag": "role",
-      "content_tag": "content",
-      "user_tag": "user",
-      "assistant_tag": "assistant"
-    }
+  "identity": {
+    "file_name": "identity.json"
   }
 }
-
