@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from src.eval.hallucination import compute_faithfulness
 from src.eval.scoring import exact_match
-from src.rag.retrieve import retrieve
+from src.rag.generate import generate_answer
 
 
 def ensure_dummy_eval_data(eval_dir: Path) -> Path:
@@ -33,7 +35,7 @@ def ensure_dummy_eval_data(eval_dir: Path) -> Path:
     return sample_path
 
 
-def load_eval_samples(eval_dir: Path) -> list[dict]:
+def load_eval_samples(eval_dir: Path) -> list[dict[str, Any]]:
     jsonl_files = sorted(eval_dir.glob("*.jsonl"))
     if not jsonl_files:
         jsonl_files = [ensure_dummy_eval_data(eval_dir)]
@@ -48,19 +50,38 @@ def load_eval_samples(eval_dir: Path) -> list[dict]:
     return samples
 
 
-def placeholder_predict(question: str, chunks: list[dict]) -> str:
-    if chunks:
-        return f"Placeholder answer for: {question} | grounded on: {chunks[0]['text']}"
-    return f"Placeholder answer for: {question}"
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run RAG-aware evaluation.")
+    parser.add_argument("--eval-dir", type=Path, default=Path("data/eval"), help="Directory with eval jsonl files.")
+    parser.add_argument("--reports-dir", type=Path, default=Path("reports"), help="Directory to write reports.")
+    parser.add_argument("--top-k", type=int, default=3, help="Top K retrieval for each sample.")
+    parser.add_argument("--index-path", type=str, default="data/rag/wiki_demo.faiss", help="FAISS index path.")
+    parser.add_argument(
+        "--mapping-path",
+        type=str,
+        default="data/rag/wiki_demo_chunks.json",
+        help="Chunk mapping path.",
+    )
+    parser.add_argument(
+        "--embedding-model-name",
+        type=str,
+        default=None,
+        help="Optional embedding model override.",
+    )
+    parser.add_argument("--max-samples", type=int, default=0, help="Limit eval samples; 0 means all.")
+    return parser.parse_args()
 
 
 def main() -> None:
-    root = Path.cwd()
-    eval_dir = root / "data" / "eval"
-    reports_dir = root / "reports"
+    args = parse_args()
+    eval_dir = args.eval_dir
+    reports_dir = args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     samples = load_eval_samples(eval_dir)
+    if args.max_samples > 0:
+        samples = samples[: args.max_samples]
+
     results_path = reports_dir / "results.jsonl"
     summary_path = reports_dir / "summary.json"
 
@@ -68,14 +89,22 @@ def main() -> None:
     for sample in samples:
         question = sample.get("question", "")
         reference = sample.get("reference", "")
-        chunks = retrieve(question, top_k=3)
-        prediction = placeholder_predict(question, chunks)
+        rag_output = generate_answer(
+            query=question,
+            top_k=args.top_k,
+            index_path=args.index_path,
+            mapping_path=args.mapping_path,
+            embedding_model_name=args.embedding_model_name,
+        )
+        prediction = rag_output["answer"]
+        chunks = rag_output["retrieved_chunks"]
         faithfulness = compute_faithfulness(prediction, chunks)
         result = {
             "id": sample.get("id"),
             "question": question,
             "reference": reference,
             "prediction": prediction,
+            "prompt": rag_output["prompt"],
             "retrieved_chunks": chunks,
             "metrics": {
                 "exact_match": exact_match(prediction, reference),
@@ -94,7 +123,10 @@ def main() -> None:
         "avg_faithfulness": round(
             sum(r["metrics"]["faithfulness_score"] for r in results) / max(len(results), 1), 4
         ),
-        "next_step": "Replace placeholder_predict with real model inference and swap dummy retrieval with a real index.",
+        "top_k": args.top_k,
+        "index_path": args.index_path,
+        "mapping_path": args.mapping_path,
+        "next_step": "Replace dummy_generate with real model inference backend while keeping citation format.",
     }
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -104,4 +136,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
