@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /mnt/sharedata/ssd_large/common/LLMs/Qwen2.5-7B-Instruct
 trust_remote_code: true
 
 ### method
@@ -11,7 +11,7 @@ lora_target: all
 deepspeed: examples/deepspeed/ds_z3_config.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
 
 ### dataset
-dataset: demo_sft
+dataset: alpaca_zh_demo,identity
 template: qwen
 cutoff_len: 4096
 max_samples: 1000
