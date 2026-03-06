@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_PATH="${1:-configs/train/sft_lora_qwen2.5_7b.yaml}"
-# Compatible parameter parsing:
-# 1) old usage: train_sft_deepspeed.sh <config> <ds_config>
-# 2) new usage: train_sft_deepspeed.sh <config> <run_tag> [ds_config]
-ARG2="${2:-}"
-ARG3="${3:-}"
-RUN_TAG=""
-DS_CONFIG="ds_config/zero2.json"
-if [[ -n "${ARG2}" ]]; then
-  if [[ "${ARG2}" == *.json ]] || [[ -f "${ARG2}" ]]; then
-    DS_CONFIG="${ARG2}"
-  else
-    RUN_TAG="${ARG2}"
-    DS_CONFIG="${ARG3:-ds_config/zero2.json}"
-  fi
+usage() {
+  echo "Usage: bash scripts/train_sft_deepspeed.sh <config_path> <run_tag> [ds_config_path]"
+}
+
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+  usage
+  exit 1
 fi
+
+CONFIG_PATH="${1}"
+RUN_TAG="${2}"
+DS_CONFIG="${3:-ds_config/zero2.json}"
 LLAMA_FACTORY_DIR="${LLAMA_FACTORY_DIR:-$HOME/llm_project/LlamaFactory}"
 
 if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
@@ -99,15 +95,17 @@ printf '\n' >> "${OUTPUT_DIR}/launch_command.txt"
 
 TRAIN_LOG="${OUTPUT_DIR}/train_stdout.log"
 
-echo "[train_sft_deepspeed] Config      : ${CONFIG_PATH}"
-echo "[train_sft_deepspeed] Temp config : ${TEMP_CONFIG_PATH}"
-echo "[train_sft_deepspeed] DS config   : ${DS_CONFIG}"
-echo "[train_sft_deepspeed] Run tag     : ${RUN_TAG:-<none>}"
-echo "[train_sft_deepspeed] Run name    : ${RUN_NAME}"
-echo "[train_sft_deepspeed] Model alias : ${MODEL_ALIAS}"
-echo "[train_sft_deepspeed] Method      : ${METHOD}"
-echo "[train_sft_deepspeed] Output dir  : ${OUTPUT_DIR}"
-echo "[train_sft_deepspeed] GPU count   : ${GPU_COUNT}"
+echo "[train_sft_deepspeed] Launch Summary:"
+echo "[train_sft_deepspeed] config_path          : ${CONFIG_PATH}"
+echo "[train_sft_deepspeed] run_tag              : ${RUN_TAG}"
+echo "[train_sft_deepspeed] output_dir           : ${OUTPUT_DIR}"
+echo "[train_sft_deepspeed] deepspeed_config     : ${DS_CONFIG}"
+echo "[train_sft_deepspeed] CUDA_VISIBLE_DEVICES : ${CUDA_VISIBLE_DEVICES}"
+echo "[train_sft_deepspeed] temp_config_path     : ${TEMP_CONFIG_PATH}"
+echo "[train_sft_deepspeed] run_name             : ${RUN_NAME}"
+echo "[train_sft_deepspeed] model_alias          : ${MODEL_ALIAS}"
+echo "[train_sft_deepspeed] method               : ${METHOD}"
+echo "[train_sft_deepspeed] gpu_count            : ${GPU_COUNT}"
 
 echo "[train_sft_deepspeed] Logging stdout/stderr to ${TRAIN_LOG}"
 

@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_PATH="${1:-configs/train/sft_lora_qwen2.5_7b.yaml}"
-RUN_TAG="${2:-}"
+usage() {
+  echo "Usage: bash scripts/train_sft_torchrun.sh <config_path> <run_tag>"
+}
+
+if [[ $# -ne 2 ]]; then
+  usage
+  exit 1
+fi
+
+CONFIG_PATH="${1}"
+RUN_TAG="${2}"
 LLAMA_FACTORY_DIR="${LLAMA_FACTORY_DIR:-$HOME/llm_project/LlamaFactory}"
 
 if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
@@ -70,14 +79,16 @@ printf '\n' >> "${OUTPUT_DIR}/launch_command.txt"
 
 TRAIN_LOG="${OUTPUT_DIR}/train_stdout.log"
 
-echo "[train_sft_torchrun] Config      : ${CONFIG_PATH}"
-echo "[train_sft_torchrun] Temp config : ${TEMP_CONFIG_PATH}"
-echo "[train_sft_torchrun] Run tag     : ${RUN_TAG:-<none>}"
-echo "[train_sft_torchrun] Run name    : ${RUN_NAME}"
-echo "[train_sft_torchrun] Model alias : ${MODEL_ALIAS}"
-echo "[train_sft_torchrun] Method      : ${METHOD}"
-echo "[train_sft_torchrun] Output dir  : ${OUTPUT_DIR}"
-echo "[train_sft_torchrun] GPU count   : ${GPU_COUNT}"
+echo "[train_sft_torchrun] Launch Summary:"
+echo "[train_sft_torchrun] config_path          : ${CONFIG_PATH}"
+echo "[train_sft_torchrun] run_tag              : ${RUN_TAG}"
+echo "[train_sft_torchrun] output_dir           : ${OUTPUT_DIR}"
+echo "[train_sft_torchrun] CUDA_VISIBLE_DEVICES : ${CUDA_VISIBLE_DEVICES}"
+echo "[train_sft_torchrun] temp_config_path     : ${TEMP_CONFIG_PATH}"
+echo "[train_sft_torchrun] run_name             : ${RUN_NAME}"
+echo "[train_sft_torchrun] model_alias          : ${MODEL_ALIAS}"
+echo "[train_sft_torchrun] method               : ${METHOD}"
+echo "[train_sft_torchrun] gpu_count            : ${GPU_COUNT}"
 
 echo "[train_sft_torchrun] Logging stdout/stderr to ${TRAIN_LOG}"
 

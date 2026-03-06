@@ -79,46 +79,23 @@ ln -sf /Users/shellyli/Documents/GitHub/llm-finetune-rag/data/dataset_info.json 
 
 ### 2. 训练
 
-训练脚本支持第二个参数作为 run tag，并自动生成独立 run 目录与日志，不再覆盖历史实验。
+训练脚本统一参数接口，并自动生成独立 run 目录与日志，不覆盖历史实验。
 
-DeepSpeed 多卡训练脚本默认使用：
-
-- 配置：`configs/train/sft_lora_qwen2.5_7b.yaml`
-- ZeRO：`ds_config/zero2.json`
-- GPU：若未设置 `CUDA_VISIBLE_DEVICES`，默认尝试 `0,1,2,3,4,5,6,7`
+- Torchrun：
+  - `bash scripts/train_sft_torchrun.sh <config_path> <run_tag>`
+- DeepSpeed：
+  - `bash scripts/train_sft_deepspeed.sh <config_path> <run_tag> [ds_config_path]`
+  - `ds_config_path` 可选，默认 `ds_config/zero2.json`
 
 示例：
 
 ```bash
 export LLAMA_FACTORY_DIR=~/llm_project/LlamaFactory
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero2.json
-```
 
-带 tag 的 DeepSpeed 用法（新）：
-
-```bash
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_main
-```
-
-切换 ZeRO Stage：
-
-```bash
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero3.json
-```
-
-Torchrun 版本：
-
-```bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen2.5_7b.yaml
-```
-
-带 tag 的 Torchrun 用法（新）：
-
-```bash
 bash scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen3_4b.yaml single_smoke
-bash scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_main
+bash scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_main
+bash scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_zero3 ds_config/zero3.json
 ```
 
 ## Experiment Tracking
