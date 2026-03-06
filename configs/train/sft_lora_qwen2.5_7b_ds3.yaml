@@ -8,7 +8,7 @@ do_train: true
 finetuning_type: lora
 lora_rank: 8
 lora_target: all
-deepspeed: examples/deepspeed/ds_z3_config.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+deepspeed: ds_config/zero3.json
 
 ### dataset
 dataset: alpaca_zh_demo,identity
