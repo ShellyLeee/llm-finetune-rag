@@ -23,5 +23,3 @@ wandb/
 tensorboard/
 logs/
 
-
-.tmp_configs/

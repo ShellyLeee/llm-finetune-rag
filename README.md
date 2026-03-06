@@ -79,8 +79,6 @@ ln -sf /Users/shellyli/Documents/GitHub/llm-finetune-rag/data/dataset_info.json 
 
 ### 2. 训练
 
-训练脚本支持第二个参数作为 run tag，并自动生成独立 run 目录与日志，不再覆盖历史实验。
-
 DeepSpeed 多卡训练脚本默认使用：
 
 - 配置：`configs/train/sft_lora_qwen2.5_7b.yaml`
@@ -93,12 +91,6 @@ DeepSpeed 多卡训练脚本默认使用：
 export LLAMA_FACTORY_DIR=~/llm_project/LlamaFactory
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 ./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero2.json
-```
-
-带 tag 的 DeepSpeed 用法（新）：
-
-```bash
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_main
 ```
 
 切换 ZeRO Stage：
@@ -114,53 +106,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 ./scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen2.5_7b.yaml
 ```
 
-带 tag 的 Torchrun 用法（新）：
-
-```bash
-bash scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen3_4b.yaml single_smoke
-bash scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen3_4b_ds.yaml ds4_main
-```
-
-## Experiment Tracking
-
-每次训练 run 会自动创建唯一目录：
-
-```text
-runs/{model_alias}/{method}/{run_name}/
-```
-
-示例：
-
-- `runs/qwen3-4b/lora/20260306_1540_single_smoke/`
-- `runs/qwen3-4b/lora/20260306_1612_ds4_main/`
-- `runs/qwen2.5-7b/qlora/20260306_1730_qlora_v1/`
-
-每个 run 目录默认包含：
-
-- `config_used.yaml`
-- `launch_command.txt`
-- `env.txt`
-- `git_info.txt`
-- `meta.json`
-- `train_stdout.log`
-- 训练产物（如 `adapter_model.safetensors`）
-
-`runs/index.csv` 用于记录所有实验索引（逐次 append），至少包含：
-
-- `run_name`
-- `model_alias`
-- `method`
-- `config_path`
-- `output_dir`
-- `launch_time`
-- `git_commit`
-
-区分实验类型建议：
-
-- single 卡：tag 用 `single_*`，例如 `single_smoke`
-- DeepSpeed：tag 用 `ds*`，例如 `ds4_main`
-- QLoRA：使用 `sft_qlora_*.yaml` 并配合 `qlora_*` tag
-- RAG / eval / export：后续可复用同一 run 记录机制扩展到独立任务脚本
+训练输出统一写入 `runs/`。脚本会尝试在对应输出目录下记录 `meta.txt`，写入 config 路径与当前 git commit。
 
 ### 3. 评测
 
@@ -193,14 +139,13 @@ runs/{model_alias}/{method}/{run_name}/
 ## 可复现性说明
 
 - 所有训练关键配置均放在 `configs/` 并可版本化
-- 训练时会复制原始配置到 run 目录中的 `config_used.yaml`
-- 训练启动前会生成临时配置 `.tmp_configs/{run_name}.yaml` 并回写真实 `output_dir`
-- 训练产物与日志统一写入 `runs/{model_alias}/{method}/{run_name}/`
-- 每次训练会自动追加 `runs/index.csv`
+- 训练产物统一写入 `runs/`
 - `runs/` 与大文件目录已加入 `.gitignore`
 - 数据处理产出固定写入 `data/processed/`
 - 评测结果固定写入 `reports/`
 - `seed` 已在训练配置中固定为 `42`
+- TODO: 在训练前自动记录 `pip freeze`、CUDA/driver、LLaMA-Factory commit、DeepSpeed 版本
+- TODO: 在 `meta.txt` 中补充完整日志路径、随机种子、数据版本与评测版本
 
 ## 目录
 
@@ -214,3 +159,4 @@ runs/{model_alias}/{method}/{run_name}/
 ├── scripts/
 └── src/
 ```
+
