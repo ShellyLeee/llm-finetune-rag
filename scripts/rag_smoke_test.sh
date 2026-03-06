@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CORPUS_PATH="${CORPUS_PATH:-/llm_project/LlamaFactory/data/wiki_demo.txt}"
+CORPUS_PATH="${CORPUS_PATH:-$HOME/llm_project/LlamaFactory/data/wiki_demo.txt}"
 INDEX_PATH="${INDEX_PATH:-data/rag/wiki_demo.faiss}"
 MAPPING_PATH="${MAPPING_PATH:-data/rag/wiki_demo_chunks.json}"
 EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME:-BAAI/bge-small-zh-v1.5}"
