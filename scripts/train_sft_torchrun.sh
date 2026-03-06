@@ -2,6 +2,7 @@
 set -euo pipefail
 
 CONFIG_PATH="${1:-configs/train/sft_lora_qwen2.5_7b.yaml}"
+RUN_NAME="${2:-}"
 LLAMA_FACTORY_DIR="${LLAMA_FACTORY_DIR:-$HOME/llm_project/LlamaFactory}"
 
 if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
@@ -28,7 +29,7 @@ print(len(gpus))
 PY
 )"
 
-OUTPUT_DIR="$(python - <<'PY' "${CONFIG_PATH}"
+BASE_OUTPUT_DIR="$(python - <<'PY' "${CONFIG_PATH}"
 import sys
 from pathlib import Path
 path = Path(sys.argv[1])
@@ -41,6 +42,15 @@ print(output_dir)
 PY
 )"
 
+OUTPUT_DIR="${BASE_OUTPUT_DIR}"
+if [[ -n "${RUN_NAME}" ]]; then
+  if [[ "${RUN_NAME}" == */* ]]; then
+    OUTPUT_DIR="${RUN_NAME}"
+  else
+    OUTPUT_DIR="$(dirname "${BASE_OUTPUT_DIR}")/${RUN_NAME}"
+  fi
+fi
+
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p runs
 
@@ -48,24 +58,28 @@ GIT_HASH="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 {
   echo "config_path=${CONFIG_PATH}"
   echo "launcher=torchrun"
+  echo "base_output_dir=${BASE_OUTPUT_DIR}"
+  echo "run_name=${RUN_NAME}"
   echo "git_commit=${GIT_HASH}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES}"
   echo "llama_factory_dir=${LLAMA_FACTORY_DIR}"
 } > "${OUTPUT_DIR}/meta.txt"
 
+export NCCL_P2P_DISABLE=1
+export NCCL_IB_DISABLE=1
 export FORCE_TORCHRUN=1
 
 echo "[train_sft_torchrun] Config      : ${CONFIG_PATH}"
+echo "[train_sft_torchrun] Run name    : ${RUN_NAME:-<from-config>}"
 echo "[train_sft_torchrun] Output dir  : ${OUTPUT_DIR}"
 echo "[train_sft_torchrun] GPU count   : ${GPU_COUNT}"
 
 if command -v llamafactory-cli >/dev/null 2>&1; then
   echo "[train_sft_torchrun] Launching via torchrun + llamafactory-cli train"
   torchrun --nproc_per_node="${GPU_COUNT}" --master_port="${MASTER_PORT:-29500}" \
-    "$(command -v llamafactory-cli)" train "${CONFIG_PATH}"
+    "$(command -v llamafactory-cli)" train "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
 else
   echo "[train_sft_torchrun] llamafactory-cli not found. Falling back to ${LLAMA_FACTORY_DIR}/src/train.py"
   torchrun --nproc_per_node="${GPU_COUNT}" --master_port="${MASTER_PORT:-29500}" \
-    "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}"
+    "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
 fi
-
