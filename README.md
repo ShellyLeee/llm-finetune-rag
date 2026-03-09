@@ -147,7 +147,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 - TODO: 在训练前自动记录 `pip freeze`、CUDA/driver、LLaMA-Factory commit、DeepSpeed 版本
 - TODO: 在 `meta.txt` 中补充完整日志路径、随机种子、数据版本与评测版本
 
-## 目录
+## 项目结构
 
 ```text
 .
