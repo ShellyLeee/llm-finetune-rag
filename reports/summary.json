@@ -1,6 +1,0 @@
-{
-  "num_samples": 2,
-  "avg_exact_match": 0.0,
-  "avg_faithfulness": 0.5,
-  "next_step": "Replace placeholder_predict with real model inference and swap dummy retrieval with a real index."
-}

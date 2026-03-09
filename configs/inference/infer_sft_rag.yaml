@@ -1,0 +1,9 @@
+# SFT + RAG inference placeholder config.
+mode: sft_rag
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+adapter_name_or_path: runs/qwen2.5-7b/lora_sft
+index_path: data/corpus/indexes/wiki_demo.faiss
+mapping_path: data/corpus/chunks/wiki_demo_chunks.json
+top_k: 3
+max_new_tokens: 512
+# TODO: enable merged SFT adapter + retrieval workflow.

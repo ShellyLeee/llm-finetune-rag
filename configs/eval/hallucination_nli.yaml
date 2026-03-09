@@ -1,0 +1,5 @@
+# NLI-based hallucination placeholder config.
+mode: nli
+nli_model_name_or_path: null
+threshold: 0.5
+# TODO: connect this config to src/eval/nli_eval.py.

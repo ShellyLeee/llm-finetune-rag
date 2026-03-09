@@ -1,0 +1,5 @@
+# Reranker placeholder config.
+enabled: false
+model_name_or_path: null
+top_n: 3
+# TODO: set enabled=true and configure a reranker model.

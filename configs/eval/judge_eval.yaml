@@ -1,0 +1,7 @@
+# Judge evaluation placeholder config.
+judge_model_name_or_path: null
+criteria:
+  - faithfulness
+  - relevance
+  - completeness
+# TODO: connect this config to src/eval/judge_eval.py.

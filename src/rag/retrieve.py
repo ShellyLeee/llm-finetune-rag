@@ -37,8 +37,8 @@ def load_mapping(mapping_path: Path) -> dict[str, Any]:
 def retrieve(
     query: str,
     top_k: int = 3,
-    index_path: Path | str = Path("data/rag/wiki_demo.faiss"),
-    mapping_path: Path | str = Path("data/rag/wiki_demo_chunks.json"),
+    index_path: Path | str = Path("data/corpus/indexes/wiki_demo.faiss"),
+    mapping_path: Path | str = Path("data/corpus/chunks/wiki_demo_chunks.json"),
     embedding_model_name: str | None = None,
 ) -> list[dict[str, Any]]:
     index_path = Path(index_path)
@@ -92,13 +92,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--index-path",
         type=Path,
-        default=Path("data/rag/wiki_demo.faiss"),
+        default=Path("data/corpus/indexes/wiki_demo.faiss"),
         help="FAISS index path.",
     )
     parser.add_argument(
         "--mapping-path",
         type=Path,
-        default=Path("data/rag/wiki_demo_chunks.json"),
+        default=Path("data/corpus/chunks/wiki_demo_chunks.json"),
         help="Chunk mapping json path.",
     )
     parser.add_argument(

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-python -m src.eval.run_eval
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/eval/eval.sh" "$@"

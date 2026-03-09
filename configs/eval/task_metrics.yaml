@@ -1,0 +1,6 @@
+# Task metrics placeholder config.
+metrics:
+  - exact_match
+aggregate:
+  - mean
+# TODO: extend with task-specific metrics.

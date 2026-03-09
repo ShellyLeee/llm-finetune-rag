@@ -1,0 +1,5 @@
+# Citation-based hallucination placeholder config.
+mode: citation
+require_chunk_id_pattern: true
+faithfulness_metric: citation_coverage
+# TODO: tighten citation format and unsupported-claim checks.

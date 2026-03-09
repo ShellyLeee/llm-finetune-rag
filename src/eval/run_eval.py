@@ -52,14 +52,29 @@ def load_eval_samples(eval_dir: Path) -> list[dict[str, Any]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run RAG-aware evaluation.")
-    parser.add_argument("--eval-dir", type=Path, default=Path("data/eval"), help="Directory with eval jsonl files.")
-    parser.add_argument("--reports-dir", type=Path, default=Path("reports"), help="Directory to write reports.")
+    parser.add_argument(
+        "--eval-dir",
+        type=Path,
+        default=Path("data/processed/eval"),
+        help="Directory with eval jsonl files.",
+    )
+    parser.add_argument(
+        "--reports-dir",
+        type=Path,
+        default=Path("reports/latest"),
+        help="Directory to write reports.",
+    )
     parser.add_argument("--top-k", type=int, default=3, help="Top K retrieval for each sample.")
-    parser.add_argument("--index-path", type=str, default="data/rag/wiki_demo.faiss", help="FAISS index path.")
+    parser.add_argument(
+        "--index-path",
+        type=str,
+        default="data/corpus/indexes/wiki_demo.faiss",
+        help="FAISS index path.",
+    )
     parser.add_argument(
         "--mapping-path",
         type=str,
-        default="data/rag/wiki_demo_chunks.json",
+        default="data/corpus/chunks/wiki_demo_chunks.json",
         help="Chunk mapping path.",
     )
     parser.add_argument(

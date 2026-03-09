@@ -22,8 +22,8 @@
 2. 在你的训练环境中安装本仓库依赖
 
 ```bash
-chmod +x scripts/*.sh
-./scripts/install_deps.sh
+find scripts -name "*.sh" -type f -exec chmod +x {} \;
+./scripts/env/install_deps.sh
 ```
 
 3. 同时安装 LLaMA-Factory 侧需要的依赖，尤其是其 `requirements/metrics.txt` 与 `requirements/deepspeed.txt`
@@ -37,7 +37,7 @@ pip install -r requirements/deepspeed.txt
 4. 做环境检查
 
 ```bash
-./scripts/env_check.sh
+./scripts/env/env_check.sh
 ```
 
 ## 仓库使用方式
@@ -55,20 +55,20 @@ pip install -r requirements/deepspeed.txt
 执行转换:
 
 ```bash
-python src/prepare_dataset.py \
+python -m src.data.prepare_dataset \
   --input data/raw/your_dataset.jsonl \
-  --output data/processed/train.jsonl \
+  --output data/processed/train/train.jsonl \
   --dataset_name demo_sft \
   --lang_field lang
 ```
 
 脚本会：
 
-- 生成 `data/processed/train.jsonl`
-- 生成 `data/processed/data_stats.json`
+- 生成 `data/processed/train/train.jsonl`
+- 生成 `data/processed/stats/data_stats.json`
 - 在输入缺失时自动创建占位流程提示，不会直接崩溃
 
-`data/dataset_info.json` 已提供最小可用的 `demo_sft` 配置，默认指向 `data/processed/train.jsonl`。替换真实数据时，修改该文件中的路径与数据集名称即可。
+`data/dataset_info.json` 已提供最小可用的 `demo_sft` 配置，默认指向 `data/processed/train/train.jsonl`。替换真实数据时，修改该文件中的路径与数据集名称即可。
 
 如果 LLaMA-Factory 要求固定位置的 `dataset_info.json`，可在其 `data/` 目录中创建软链接：
 
@@ -90,20 +90,20 @@ DeepSpeed 多卡训练脚本默认使用：
 ```bash
 export LLAMA_FACTORY_DIR=~/llm_project/LlamaFactory
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero2.json
+./scripts/train/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero2.json
 ```
 
 切换 ZeRO Stage：
 
 ```bash
-./scripts/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero3.json
+./scripts/train/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero3.json
 ```
 
 Torchrun 版本：
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train_sft_torchrun.sh configs/train/sft_lora_qwen2.5_7b.yaml
+./scripts/train/train_sft_torchrun.sh configs/train/sft_lora_qwen2.5_7b.yaml
 ```
 
 训练输出统一写入 `runs/`。脚本会尝试在对应输出目录下记录 `meta.txt`，写入 config 路径与当前 git commit。
@@ -111,18 +111,18 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 ### 3. 评测
 
 ```bash
-./scripts/eval.sh
+./scripts/eval/eval.sh
 ```
 
 默认行为：
 
-- 从 `data/eval` 读取样本
+- 从 `data/processed/eval` 读取样本
 - 如果没有评测数据，自动创建少量 dummy 样本并提示
-- 输出 `reports/results.jsonl` 和 `reports/summary.json`
+- 输出 `reports/latest/results.jsonl` 和 `reports/latest/summary.json`
 
 ### 4. 推理 / 部署
 
-`scripts/serve_vllm.sh` 当前为占位脚本，用于：
+`scripts/inference/serve_vllm.sh` 当前为占位脚本，用于：
 
 - 检查 `vllm` 是否已安装
 - 提示如何启动 OpenAI-compatible server
@@ -132,7 +132,9 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 - `configs/models/`: 模型级配置，可扩展到 Llama3 / Mistral / Qwen3.5 等
 - `configs/train/`: 训练配置，当前含 LoRA 与 QLoRA 骨架
-- `configs/inference/`: 推理配置占位
+- `configs/inference/`: 推理配置（base/sft/rag/sft_rag）占位
+- `configs/rag/`: RAG 建索引、检索、重排占位配置
+- `configs/eval/`: 任务指标、检索指标、事实性评测占位配置
 - `configs/export/`: LoRA merge 配置占位
 - `ds_config/`: DeepSpeed ZeRO-2 / ZeRO-3
 
@@ -160,3 +162,11 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 └── src/
 ```
 
+## 目录说明
+
+- `configs/`: 模型、训练、推理、RAG、评测与导出配置入口。
+- `data/`: `raw/` 原始数据、`processed/` 训练/评测/统计产物、`corpus/` 检索语料与索引、`cache/` 中间缓存。
+- `scripts/`: 分层脚本入口（`env/`、`train/`、`inference/`、`rag/`、`eval/`、`export/`），旧路径保留兼容 wrapper。
+- `src/`: Python 代码主目录（`data/`、`rag/`、`inference/`、`eval/`、`export/`、`utils/`）。
+- `runs/`: 训练输出与实验运行目录（按模型/实验名组织）。
+- `reports/`: 评测报告产物（`latest/`、`experiments/`、`ablations/`、`leaderboards/`）。

@@ -1,0 +1,9 @@
+# SFT inference placeholder config.
+mode: sft
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+adapter_name_or_path: runs/qwen2.5-7b/lora_sft
+template: qwen
+max_new_tokens: 512
+temperature: 0.7
+top_p: 0.9
+# TODO: align adapter path with your trained run directory.

@@ -1,0 +1,8 @@
+# RAG indexing placeholder config.
+corpus_path: data/corpus/raw/wiki_demo.txt
+index_path: data/corpus/indexes/wiki_demo.faiss
+mapping_path: data/corpus/chunks/wiki_demo_chunks.json
+embedding_model_name: BAAI/bge-small-zh-v1.5
+chunk_size: 512
+chunk_overlap: 64
+batch_size: 32

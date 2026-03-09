@@ -1,6 +1,6 @@
 {
   "demo_sft": {
-    "file_name": "processed/train.jsonl",
+    "file_name": "processed/train/train.jsonl",
     "formatting": "sharegpt",
     "columns": {
       "messages": "messages"

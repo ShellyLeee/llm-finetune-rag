@@ -146,19 +146,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--corpus-path",
         type=Path,
-        default=Path("/llm_project/LlamaFactory/data/wiki_demo.txt"),
+        default=Path("data/corpus/raw/wiki_demo.txt"),
         help="Raw text corpus path.",
     )
     parser.add_argument(
         "--index-path",
         type=Path,
-        default=Path("data/rag/wiki_demo.faiss"),
+        default=Path("data/corpus/indexes/wiki_demo.faiss"),
         help="Output FAISS index path.",
     )
     parser.add_argument(
         "--mapping-path",
         type=Path,
-        default=Path("data/rag/wiki_demo_chunks.json"),
+        default=Path("data/corpus/chunks/wiki_demo_chunks.json"),
         help="Output chunk mapping json path.",
     )
     parser.add_argument(

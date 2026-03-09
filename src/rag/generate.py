@@ -30,8 +30,8 @@ def dummy_generate(prompt: str, contexts: list[dict[str, Any]]) -> str:
 def generate_answer(
     query: str,
     top_k: int = 3,
-    index_path: str = "data/rag/wiki_demo.faiss",
-    mapping_path: str = "data/rag/wiki_demo_chunks.json",
+    index_path: str = "data/corpus/indexes/wiki_demo.faiss",
+    mapping_path: str = "data/corpus/chunks/wiki_demo_chunks.json",
     embedding_model_name: str | None = None,
     contexts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -56,11 +56,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate answer from RAG contexts (smoke test).")
     parser.add_argument("--query", type=str, required=True, help="User query text.")
     parser.add_argument("--top-k", type=int, default=3, help="Top K retrieval count.")
-    parser.add_argument("--index-path", type=str, default="data/rag/wiki_demo.faiss", help="FAISS index path.")
+    parser.add_argument(
+        "--index-path",
+        type=str,
+        default="data/corpus/indexes/wiki_demo.faiss",
+        help="FAISS index path.",
+    )
     parser.add_argument(
         "--mapping-path",
         type=str,
-        default="data/rag/wiki_demo_chunks.json",
+        default="data/corpus/chunks/wiki_demo_chunks.json",
         help="Chunk mapping path.",
     )
     parser.add_argument(

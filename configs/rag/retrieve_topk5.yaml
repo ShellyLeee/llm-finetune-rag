@@ -1,0 +1,5 @@
+# Retrieval placeholder config (Top-K=5).
+index_path: data/corpus/indexes/wiki_demo.faiss
+mapping_path: data/corpus/chunks/wiki_demo_chunks.json
+embedding_model_name: BAAI/bge-small-zh-v1.5
+top_k: 5
