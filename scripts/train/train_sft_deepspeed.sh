@@ -114,8 +114,9 @@ if ! command -v deepspeed >/dev/null 2>&1; then
 fi
 
 if command -v llamafactory-cli >/dev/null 2>&1; then
+  LLAMAFACTORY_CLI_BIN="$(command -v llamafactory-cli)"
   echo "[train_sft_deepspeed] Launching via llamafactory-cli train"
-  deepspeed --num_gpus="${GPU_COUNT}" llamafactory-cli train "${CONFIG_PATH}" --deepspeed "${DS_CONFIG}" --output_dir "${OUTPUT_DIR}"
+  deepspeed --num_gpus="${GPU_COUNT}" "${LLAMAFACTORY_CLI_BIN}" train "${CONFIG_PATH}" --deepspeed "${DS_CONFIG}" --output_dir "${OUTPUT_DIR}"
 else
   echo "[train_sft_deepspeed] llamafactory-cli not found. Falling back to ${LLAMA_FACTORY_DIR}/src/train.py"
   deepspeed --num_gpus="${GPU_COUNT}" python "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}" --deepspeed "${DS_CONFIG}" --output_dir "${OUTPUT_DIR}"
