@@ -5,15 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 CONFIG_PATH="${1:-configs/train/sft_lora_qwen2.5_7b.yaml}"
-# Compatible parameter parsing:
-# 1) old usage: train_sft_deepspeed.sh <config> <ds_config>
-# 2) new usage: train_sft_deepspeed.sh <config> <run_name> [ds_config]
-# Note: this script now launches via `llamafactory-cli train` (FORCE_TORCHRUN=1),
-# and keeps DS_CONFIG only for backward-compatible argument parsing.
 ARG2="${2:-}"
 ARG3="${3:-}"
 RUN_NAME=""
 DS_CONFIG="ds_config/zero2.json"
+
 if [[ -n "${ARG2}" ]]; then
   if [[ "${ARG2}" == *.json ]] || [[ -f "${ARG2}" ]]; then
     DS_CONFIG="${ARG2}"
@@ -22,6 +18,7 @@ if [[ -n "${ARG2}" ]]; then
     DS_CONFIG="${ARG3:-ds_config/zero2.json}"
   fi
 fi
+
 LLAMA_FACTORY_DIR="${LLAMA_FACTORY_DIR:-$HOME/llm_project/LlamaFactory}"
 
 if [[ "${CONFIG_PATH}" != /* ]]; then
@@ -32,7 +29,7 @@ if [[ "${DS_CONFIG}" != /* ]]; then
 fi
 
 if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-  export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
+  export CUDA_VISIBLE_DEVICES="0,1,2,3"
   echo "[train_sft_deepspeed] CUDA_VISIBLE_DEVICES not set. Defaulting to ${CUDA_VISIBLE_DEVICES}."
 else
   echo "[train_sft_deepspeed] Using CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}."
@@ -48,13 +45,6 @@ if [[ ! -d "${LLAMA_FACTORY_DIR}" ]]; then
   exit 1
 fi
 
-GPU_COUNT="$(python - <<'PY'
-import os
-gpus = [x for x in os.environ.get("CUDA_VISIBLE_DEVICES", "").split(",") if x.strip()]
-print(len(gpus))
-PY
-)"
-
 BASE_OUTPUT_DIR="$(python - <<'PY' "${CONFIG_PATH}"
 import sys
 from pathlib import Path
@@ -68,14 +58,17 @@ print(output_dir)
 PY
 )"
 
-OUTPUT_DIR="${BASE_OUTPUT_DIR}"
-if [[ -n "${RUN_NAME}" ]]; then
-  if [[ "${RUN_NAME}" == */* ]]; then
-    OUTPUT_DIR="${RUN_NAME}"
-  else
-    OUTPUT_DIR="$(dirname "${BASE_OUTPUT_DIR}")/${RUN_NAME}"
-  fi
+if [[ -z "${RUN_NAME}" ]]; then
+  RUN_NAME="$(basename "${BASE_OUTPUT_DIR}")"
 fi
+
+export RUN_NAME
+export NCCL_P2P_DISABLE=1
+export NCCL_IB_DISABLE=1
+export FORCE_TORCHRUN=1
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
+OUTPUT_DIR="$(dirname "${BASE_OUTPUT_DIR}")/${RUN_NAME}"
 if [[ "${OUTPUT_DIR}" != /* ]]; then
   OUTPUT_DIR="${REPO_ROOT}/${OUTPUT_DIR}"
 fi
@@ -87,28 +80,17 @@ GIT_HASH="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 {
   echo "config_path=${CONFIG_PATH}"
   echo "ds_config=${DS_CONFIG}"
-  echo "base_output_dir=${BASE_OUTPUT_DIR}"
   echo "run_name=${RUN_NAME}"
+  echo "resolved_output_dir=${OUTPUT_DIR}"
   echo "git_commit=${GIT_HASH}"
   echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES}"
   echo "llama_factory_dir=${LLAMA_FACTORY_DIR}"
 } > "${OUTPUT_DIR}/meta.txt"
 
-export NCCL_P2P_DISABLE=1
-export NCCL_IB_DISABLE=1
-export FORCE_TORCHRUN=1
-
 echo "[train_sft_deepspeed] Config      : ${CONFIG_PATH}"
 echo "[train_sft_deepspeed] DS config   : ${DS_CONFIG}"
-echo "[train_sft_deepspeed] Run name    : ${RUN_NAME:-<from-config>}"
+echo "[train_sft_deepspeed] Run name    : ${RUN_NAME}"
 echo "[train_sft_deepspeed] Output dir  : ${OUTPUT_DIR}"
-echo "[train_sft_deepspeed] GPU count   : ${GPU_COUNT}"
+echo "[train_sft_deepspeed] Launching via llamafactory-cli train (FORCE_TORCHRUN=1)"
 
-if command -v llamafactory-cli >/dev/null 2>&1; then
-  LLAMAFACTORY_CLI_BIN="$(command -v llamafactory-cli)"
-  echo "[train_sft_deepspeed] Launching via llamafactory-cli train (FORCE_TORCHRUN=1)"
-  "${LLAMAFACTORY_CLI_BIN}" train "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
-else
-  echo "[train_sft_deepspeed] llamafactory-cli not found. Falling back to ${LLAMA_FACTORY_DIR}/src/train.py"
-  python "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
-fi
+llamafactory-cli train "${CONFIG_PATH}"
