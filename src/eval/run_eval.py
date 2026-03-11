@@ -6,147 +6,131 @@ from pathlib import Path
 from typing import Any
 
 from src.eval.hallucination import compute_faithfulness
-from src.eval.scoring import exact_match
-from src.rag.generate import generate_answer
-
-
-def ensure_dummy_eval_data(eval_dir: Path) -> Path:
-    eval_dir.mkdir(parents=True, exist_ok=True)
-    sample_path = eval_dir / "dummy_eval.jsonl"
-    if sample_path.exists():
-        return sample_path
-
-    samples = [
-        {
-            "id": "dummy-1",
-            "question": "What is supervised fine-tuning?",
-            "reference": "Supervised fine-tuning adapts a pretrained model using labeled instruction-response data."
-        },
-        {
-            "id": "dummy-2",
-            "question": "What does RAG combine?",
-            "reference": "RAG combines retrieval with generation."
-        },
-    ]
-    with sample_path.open("w", encoding="utf-8") as f:
-        for sample in samples:
-            f.write(json.dumps(sample, ensure_ascii=False) + "\n")
-    print(f"[run_eval] No eval data found. Created dummy samples at {sample_path}.")
-    return sample_path
-
-
-def load_eval_samples(eval_dir: Path) -> list[dict[str, Any]]:
-    jsonl_files = sorted(eval_dir.glob("*.jsonl"))
-    if not jsonl_files:
-        jsonl_files = [ensure_dummy_eval_data(eval_dir)]
-
-    samples = []
-    for path in jsonl_files:
-        with path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    samples.append(json.loads(line))
-    return samples
+from src.eval.scoring import char_f1, exact_match, rouge_l
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run RAG-aware evaluation.")
+    parser = argparse.ArgumentParser(description="Evaluate predictions.jsonl and write summary artifacts.")
+    parser.add_argument("--predictions_file", type=Path, required=True)
     parser.add_argument(
-        "--eval-dir",
+        "--output_dir",
         type=Path,
-        default=Path("data/processed/eval"),
-        help="Directory with eval jsonl files.",
-    )
-    parser.add_argument(
-        "--reports-dir",
-        type=Path,
-        default=Path("reports/latest"),
-        help="Directory to write reports.",
-    )
-    parser.add_argument("--top-k", type=int, default=3, help="Top K retrieval for each sample.")
-    parser.add_argument(
-        "--index-path",
-        type=str,
-        default="data/corpus/indexes/wiki_demo.faiss",
-        help="FAISS index path.",
-    )
-    parser.add_argument(
-        "--mapping-path",
-        type=str,
-        default="data/corpus/chunks/wiki_demo_chunks.json",
-        help="Chunk mapping path.",
-    )
-    parser.add_argument(
-        "--embedding-model-name",
-        type=str,
         default=None,
-        help="Optional embedding model override.",
+        help="Defaults to predictions file parent directory.",
     )
-    parser.add_argument("--max-samples", type=int, default=0, help="Limit eval samples; 0 means all.")
     return parser.parse_args()
+
+
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Predictions file not found: {path}")
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+def safe_mean(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def build_summary_md(summary: dict[str, Any]) -> str:
+    return (
+        "# Evaluation Summary\n\n"
+        f"- Samples: {summary['num_samples']}\n"
+        f"- Avg exact match: {summary['avg_exact_match']:.4f}\n"
+        f"- Avg char F1: {summary['avg_char_f1']:.4f}\n"
+        f"- Avg ROUGE-L: {summary['avg_rouge_l']:.4f}\n"
+        f"- Avg faithfulness: {summary['avg_faithfulness']:.4f}\n"
+        f"- Avg citation coverage: {summary['avg_citation_coverage']:.4f}\n"
+    )
 
 
 def main() -> None:
     args = parse_args()
-    eval_dir = args.eval_dir
-    reports_dir = args.reports_dir
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    predictions = load_jsonl(args.predictions_file)
+    output_dir = args.output_dir or args.predictions_file.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    samples = load_eval_samples(eval_dir)
-    if args.max_samples > 0:
-        samples = samples[: args.max_samples]
+    exact_match_scores: list[float] = []
+    char_f1_scores: list[float] = []
+    rouge_l_scores: list[float] = []
+    faithfulness_scores: list[float] = []
+    citation_coverages: list[float] = []
+    per_sample: list[dict[str, Any]] = []
 
-    results_path = reports_dir / "results.jsonl"
-    summary_path = reports_dir / "summary.json"
+    for row in predictions:
+        gold = str(row.get("gold_answer", ""))
+        pred = str(row.get("prediction", ""))
+        retrieved_docs = row.get("retrieved_docs", [])
 
-    results = []
-    for sample in samples:
-        question = sample.get("question", "")
-        reference = sample.get("reference", "")
-        rag_output = generate_answer(
-            query=question,
-            top_k=args.top_k,
-            index_path=args.index_path,
-            mapping_path=args.mapping_path,
-            embedding_model_name=args.embedding_model_name,
+        em = exact_match(pred, gold) if gold else 0.0
+        cf1 = char_f1(pred, gold) if gold else 0.0
+        rl = rouge_l(pred, gold) if gold else 0.0
+        faithfulness = compute_faithfulness(prediction=pred, retrieved_chunks=retrieved_docs)
+
+        exact_match_scores.append(em)
+        char_f1_scores.append(cf1)
+        rouge_l_scores.append(rl)
+        faithfulness_scores.append(float(faithfulness["faithfulness_score"]))
+        citation_coverages.append(float(faithfulness["citation_coverage"]))
+
+        per_sample.append(
+            {
+                "id": row.get("id", ""),
+                "mode": row.get("mode", ""),
+                "exact_match": em,
+                "char_f1": cf1,
+                "rouge_l": rl,
+                "faithfulness_score": faithfulness["faithfulness_score"],
+                "citation_coverage": faithfulness["citation_coverage"],
+            }
         )
-        prediction = rag_output["answer"]
-        chunks = rag_output["retrieved_chunks"]
-        faithfulness = compute_faithfulness(prediction, chunks)
-        result = {
-            "id": sample.get("id"),
-            "question": question,
-            "reference": reference,
-            "prediction": prediction,
-            "prompt": rag_output["prompt"],
-            "retrieved_chunks": chunks,
-            "metrics": {
-                "exact_match": exact_match(prediction, reference),
-                **faithfulness,
-            },
-        }
-        results.append(result)
 
-    with results_path.open("w", encoding="utf-8") as f:
-        for result in results:
-            f.write(json.dumps(result, ensure_ascii=False) + "\n")
-
-    summary = {
-        "num_samples": len(results),
-        "avg_exact_match": round(sum(r["metrics"]["exact_match"] for r in results) / max(len(results), 1), 4),
-        "avg_faithfulness": round(
-            sum(r["metrics"]["faithfulness_score"] for r in results) / max(len(results), 1), 4
-        ),
-        "top_k": args.top_k,
-        "index_path": args.index_path,
-        "mapping_path": args.mapping_path,
-        "next_step": "Replace dummy_generate with real model inference backend while keeping citation format.",
+    task_metrics = {
+        "num_samples": len(predictions),
+        "avg_exact_match": round(safe_mean(exact_match_scores), 4),
+        "avg_char_f1": round(safe_mean(char_f1_scores), 4),
+        "avg_rouge_l": round(safe_mean(rouge_l_scores), 4),
+        "per_sample": per_sample,
     }
-    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    hallucination_metrics = {
+        "num_samples": len(predictions),
+        "avg_faithfulness": round(safe_mean(faithfulness_scores), 4),
+        "avg_citation_coverage": round(safe_mean(citation_coverages), 4),
+    }
+    summary = {
+        "num_samples": len(predictions),
+        "avg_exact_match": task_metrics["avg_exact_match"],
+        "avg_char_f1": task_metrics["avg_char_f1"],
+        "avg_rouge_l": task_metrics["avg_rouge_l"],
+        "avg_faithfulness": hallucination_metrics["avg_faithfulness"],
+        "avg_citation_coverage": hallucination_metrics["avg_citation_coverage"],
+    }
 
-    print(f"[run_eval] Wrote per-sample results to {results_path}.")
-    print(f"[run_eval] Wrote summary to {summary_path}.")
+    task_path = output_dir / "task_metrics.json"
+    hallu_path = output_dir / "hallucination_metrics.json"
+    summary_path = output_dir / "summary.json"
+    summary_md_path = output_dir / "summary.md"
+
+    write_json(task_path, task_metrics)
+    write_json(hallu_path, hallucination_metrics)
+    write_json(summary_path, summary)
+    summary_md_path.write_text(build_summary_md(summary), encoding="utf-8")
+
+    print(f"[run_eval] Wrote {task_path}")
+    print(f"[run_eval] Wrote {hallu_path}")
+    print(f"[run_eval] Wrote {summary_path}")
+    print(f"[run_eval] Wrote {summary_md_path}")
 
 
 if __name__ == "__main__":

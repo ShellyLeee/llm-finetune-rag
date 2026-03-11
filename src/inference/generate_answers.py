@@ -1,4 +1,145 @@
-"""Inference answer generation placeholder.
+from __future__ import annotations
 
-TODO: implement model-backed answer generation entrypoint.
-"""
+import json
+from pathlib import Path
+from typing import Any
+
+from src.rag.retrieve import retrieve
+
+
+def load_model_and_tokenizer(model_path: str) -> tuple[Any, Any]:
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+
+    adapter_cfg = Path(model_path) / "adapter_config.json"
+    if adapter_cfg.exists():
+        try:
+            from peft import AutoPeftModelForCausalLM  # type: ignore
+
+            model = AutoPeftModelForCausalLM.from_pretrained(
+                model_path,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto",
+            )
+        except Exception:
+            model = AutoModelForCausalLM.from_pretrained(
+                model_path,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto",
+            )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto",
+        )
+
+    model.eval()
+    return model, tokenizer
+
+
+def build_prompt(question: str, mode: str, retrieved_docs: list[dict[str, Any]]) -> str:
+    if mode in {"rag", "sft_rag"} and retrieved_docs:
+        context = "\n\n".join(
+            f"[{doc['chunk_id']}] {doc['text']}" for doc in retrieved_docs if doc.get("text")
+        )
+        return (
+            "Answer the question using the provided context. "
+            "If context is insufficient, say so briefly.\n\n"
+            f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
+        )
+
+    return f"Question: {question}\nAnswer:"
+
+
+def _normalize_retrieved_docs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        normalized.append(
+            {
+                "doc_id": str(item.get("doc_id", "")),
+                "chunk_id": str(item.get("chunk_id", "")),
+                "score": float(item.get("score", 0.0)),
+                "text": str(item.get("text", "")),
+            }
+        )
+    return normalized
+
+
+def _generate_text(
+    model: Any,
+    tokenizer: Any,
+    prompt: str,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
+) -> str:
+    import torch
+
+    do_sample = temperature > 0.0
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    generate_kwargs: dict[str, Any] = {
+        "max_new_tokens": max_new_tokens,
+        "do_sample": do_sample,
+        "pad_token_id": tokenizer.eos_token_id,
+    }
+    if do_sample:
+        generate_kwargs["temperature"] = temperature
+    with torch.no_grad():
+        outputs = model.generate(**inputs, **generate_kwargs)
+    generated_ids = outputs[0][inputs["input_ids"].shape[-1] :]
+    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+
+def generate_single_sample(
+    sample: dict[str, Any],
+    mode: str,
+    model: Any,
+    tokenizer: Any,
+    top_k: int = 3,
+    index_path: str = "data/corpus/indexes/wiki_demo.faiss",
+    mapping_path: str = "data/corpus/chunks/wiki_demo_chunks.json",
+    embedding_model_name: str | None = None,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
+) -> dict[str, Any]:
+    question = str(sample.get("question", ""))
+    gold_answer = str(sample.get("gold_answer", sample.get("reference", "")))
+
+    retrieved_docs: list[dict[str, Any]] = []
+    if mode in {"rag", "sft_rag"}:
+        retrieved_docs = _normalize_retrieved_docs(
+            retrieve(
+                query=question,
+                top_k=top_k,
+                index_path=index_path,
+                mapping_path=mapping_path,
+                embedding_model_name=embedding_model_name,
+            )
+        )
+
+    prompt = build_prompt(question=question, mode=mode, retrieved_docs=retrieved_docs)
+    prediction = _generate_text(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    )
+
+    return {
+        "id": str(sample.get("id", "")),
+        "question": question,
+        "gold_answer": gold_answer,
+        "mode": mode,
+        "prediction": prediction,
+        "retrieved_docs": retrieved_docs if mode in {"rag", "sft_rag"} else [],
+    }
+
+
+def save_jsonl(rows: list[dict[str, Any]], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
