@@ -8,6 +8,8 @@ CONFIG_PATH="${1:-configs/train/sft_lora_qwen2.5_7b.yaml}"
 # Compatible parameter parsing:
 # 1) old usage: train_sft_deepspeed.sh <config> <ds_config>
 # 2) new usage: train_sft_deepspeed.sh <config> <run_name> [ds_config]
+# Note: this script now launches via `llamafactory-cli train` (FORCE_TORCHRUN=1),
+# and keeps DS_CONFIG only for backward-compatible argument parsing.
 ARG2="${2:-}"
 ARG3="${3:-}"
 RUN_NAME=""
@@ -38,11 +40,6 @@ fi
 
 if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "[train_sft_deepspeed] Config not found: ${CONFIG_PATH}"
-  exit 1
-fi
-
-if [[ ! -f "${DS_CONFIG}" ]]; then
-  echo "[train_sft_deepspeed] DeepSpeed config not found: ${DS_CONFIG}"
   exit 1
 fi
 
@@ -107,17 +104,11 @@ echo "[train_sft_deepspeed] Run name    : ${RUN_NAME:-<from-config>}"
 echo "[train_sft_deepspeed] Output dir  : ${OUTPUT_DIR}"
 echo "[train_sft_deepspeed] GPU count   : ${GPU_COUNT}"
 
-if ! command -v deepspeed >/dev/null 2>&1; then
-  echo "[train_sft_deepspeed] deepspeed command not found."
-  echo "[train_sft_deepspeed] Next step: install requirements/deepspeed.txt in the active environment."
-  exit 1
-fi
-
 if command -v llamafactory-cli >/dev/null 2>&1; then
   LLAMAFACTORY_CLI_BIN="$(command -v llamafactory-cli)"
-  echo "[train_sft_deepspeed] Launching via llamafactory-cli train"
-  deepspeed --num_gpus="${GPU_COUNT}" "${LLAMAFACTORY_CLI_BIN}" train "${CONFIG_PATH}" --deepspeed "${DS_CONFIG}" --output_dir "${OUTPUT_DIR}"
+  echo "[train_sft_deepspeed] Launching via llamafactory-cli train (FORCE_TORCHRUN=1)"
+  "${LLAMAFACTORY_CLI_BIN}" train "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
 else
   echo "[train_sft_deepspeed] llamafactory-cli not found. Falling back to ${LLAMA_FACTORY_DIR}/src/train.py"
-  deepspeed --num_gpus="${GPU_COUNT}" python "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}" --deepspeed "${DS_CONFIG}" --output_dir "${OUTPUT_DIR}"
+  python "${LLAMA_FACTORY_DIR}/src/train.py" "${CONFIG_PATH}" --output_dir "${OUTPUT_DIR}"
 fi
