@@ -43,18 +43,6 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def build_summary_md(summary: dict[str, Any]) -> str:
-    return (
-        "# Evaluation Summary\n\n"
-        f"- Samples: {summary['num_samples']}\n"
-        f"- Avg exact match: {summary['avg_exact_match']:.4f}\n"
-        f"- Avg char F1: {summary['avg_char_f1']:.4f}\n"
-        f"- Avg ROUGE-L: {summary['avg_rouge_l']:.4f}\n"
-        f"- Avg faithfulness: {summary['avg_faithfulness']:.4f}\n"
-        f"- Avg citation coverage: {summary['avg_citation_coverage']:.4f}\n"
-    )
-
-
 def main() -> None:
     args = parse_args()
     predictions = load_jsonl(args.predictions_file)
@@ -120,17 +108,14 @@ def main() -> None:
     task_path = output_dir / "task_metrics.json"
     hallu_path = output_dir / "hallucination_metrics.json"
     summary_path = output_dir / "summary.json"
-    summary_md_path = output_dir / "summary.md"
 
     write_json(task_path, task_metrics)
     write_json(hallu_path, hallucination_metrics)
     write_json(summary_path, summary)
-    summary_md_path.write_text(build_summary_md(summary), encoding="utf-8")
 
     print(f"[run_eval] Wrote {task_path}")
     print(f"[run_eval] Wrote {hallu_path}")
     print(f"[run_eval] Wrote {summary_path}")
-    print(f"[run_eval] Wrote {summary_md_path}")
 
 
 if __name__ == "__main__":
