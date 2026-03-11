@@ -79,31 +79,26 @@ ln -sf /Users/shellyli/Documents/GitHub/llm-finetune-rag/data/dataset_info.json 
 
 ### 2. 训练
 
-DeepSpeed 多卡训练脚本默认使用：
+SFT 训练使用统一脚本：
 
-- 配置：`configs/train/sft_lora_qwen2.5_7b.yaml`
-- ZeRO：`ds_config/zero2.json`
-- GPU：若未设置 `CUDA_VISIBLE_DEVICES`，默认尝试 `0,1,2,3,4,5,6,7`
+- 入口：`scripts/train/train_sft.sh`
+- 配置：`configs/train/*.yaml`
+- 多卡：通过 `FORCE_TORCHRUN=1` + `CUDA_VISIBLE_DEVICES` 控制
+- DeepSpeed ZeRO 配置建议直接写在 YAML 中（如 `deepspeed: ds_config/zero2.json`）
 
-示例：
-
-```bash
-export LLAMA_FACTORY_DIR=~/llm_project/LlamaFactory
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero2.json
-```
-
-切换 ZeRO Stage：
-
-```bash
-./scripts/train/train_sft_deepspeed.sh configs/train/sft_lora_qwen2.5_7b.yaml ds_config/zero3.json
-```
-
-Torchrun 版本：
+示例（Qwen3-4B）：
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-./scripts/train/train_sft_torchrun.sh configs/train/sft_lora_qwen2.5_7b.yaml
+./scripts/train/train_sft.sh configs/train/sft_lora_qwen3_4b_ds.yaml qwen3_4b_sft_exp1
+```
+
+如需切换 ZeRO Stage，请修改对应 YAML 里的 `deepspeed` 字段（例如 `ds_config/zero3.json`）。
+
+自定义显卡：
+
+```bash
+./scripts/train/train_sft.sh configs/train/sft_lora_qwen3_4b_ds.yaml qwen3_4b_sft_exp1 0,1,2,3
 ```
 
 训练输出统一写入 `runs/`。脚本会尝试在对应输出目录下记录 `meta.txt`，写入 config 路径与当前 git commit。
@@ -166,7 +161,7 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 - `configs/`: 模型、训练、推理、RAG、评测与导出配置入口。
 - `data/`: `raw/` 原始数据、`processed/` 训练/评测/统计产物、`corpus/` 检索语料与索引、`cache/` 中间缓存。
-- `scripts/`: 分层脚本入口（`env/`、`train/`、`inference/`、`rag/`、`eval/`、`export/`），旧路径保留兼容 wrapper。
+- `scripts/`: 分层脚本入口（`env/`、`train/`、`inference/`、`rag/`、`eval/`、`export/`）。
 - `src/`: Python 代码主目录（`data/`、`rag/`、`inference/`、`eval/`、`export/`、`utils/`）。
 - `runs/`: 训练输出与实验运行目录（按模型/实验名组织）。
 - `reports/`: 评测报告产物（`latest/`、`experiments/`、`ablations/`、`leaderboards/`）。
