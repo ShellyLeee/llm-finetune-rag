@@ -34,7 +34,16 @@ def load_mapping(mapping_path: str) -> dict[str, Any]:
     path = Path(mapping_path)
     if not path.exists():
         raise FileNotFoundError(f"Chunk mapping file not found: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"Expected dict payload in mapping file, got {type(payload)}: {path}")
+
+    chunks = payload.get("chunks")
+    if not isinstance(chunks, list):
+        raise TypeError(f"Expected payload['chunks'] to be a list in mapping file: {path}")
+
+    return payload
 
 
 @lru_cache(maxsize=8)
@@ -42,6 +51,7 @@ def load_index(index_path: str) -> Any:
     path = Path(index_path)
     if not path.exists():
         raise FileNotFoundError(f"FAISS index not found: {path}")
+
     faiss = _import_faiss()
     return faiss.read_index(str(path))
 
@@ -49,6 +59,37 @@ def load_index(index_path: str) -> Any:
 @lru_cache(maxsize=4)
 def load_embedding_model(model_name: str) -> Any:
     return _load_sentence_transformer(model_name)
+
+
+def _resolve_model_name(
+    mapping_payload: dict[str, Any],
+    embedding_model_name: str | None,
+) -> str:
+    model_name = embedding_model_name or mapping_payload.get("embedding_model_name")
+    if not model_name:
+        raise ValueError("embedding_model_name not provided and missing from mapping metadata")
+    return str(model_name)
+
+
+def _normalize_query_vector(model: Any, query: str) -> np.ndarray:
+    qvec = model.encode(
+        [query],
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+    )
+    return np.asarray(qvec, dtype=np.float32)
+
+
+def _format_result_item(item: dict[str, Any], score: float, rank: int) -> dict[str, Any]:
+    return {
+        "doc_id": str(item.get("doc_id", item.get("chunk_id", ""))),
+        "chunk_id": str(item.get("chunk_id", "")),
+        "text": str(item.get("text", "")),
+        "score": float(score),
+        "rank": int(rank),
+        "start": item.get("start"),
+        "end": item.get("end"),
+    }
 
 
 def retrieve(
@@ -61,22 +102,14 @@ def retrieve(
     index_path = str(Path(index_path))
     mapping_path = str(Path(mapping_path))
 
-    metadata = load_mapping(mapping_path)
-    chunks: list[dict[str, Any]] = metadata.get("chunks", [])
+    mapping_payload = load_mapping(mapping_path)
+    chunks: list[dict[str, Any]] = mapping_payload["chunks"]
     if not chunks:
         return []
 
-    model_name = embedding_model_name or metadata.get("embedding_model_name")
-    if not model_name:
-        raise ValueError("embedding_model_name not provided and missing from mapping metadata")
-
+    model_name = _resolve_model_name(mapping_payload, embedding_model_name)
     model = load_embedding_model(model_name)
-    qvec = model.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )
-    qvec = np.asarray(qvec, dtype=np.float32)
+    qvec = _normalize_query_vector(model, query)
 
     index = load_index(index_path)
     k = max(1, min(int(top_k), len(chunks)))
@@ -86,15 +119,10 @@ def retrieve(
     for rank, (idx, score) in enumerate(zip(indices[0], scores[0]), start=1):
         if idx < 0 or idx >= len(chunks):
             continue
+
         item = chunks[idx]
-        results.append(
-            {
-                "chunk_id": item["chunk_id"],
-                "text": item["text"],
-                "score": float(score),
-                "rank": rank,
-            }
-        )
+        results.append(_format_result_item(item, score=float(score), rank=rank))
+
     return results
 
 
@@ -123,7 +151,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main() -> None:
     args = parse_args()
     items = retrieve(
         query=args.query,
@@ -133,3 +161,7 @@ if __name__ == "__main__":
         embedding_model_name=args.embedding_model_name,
     )
     print(json.dumps(items, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

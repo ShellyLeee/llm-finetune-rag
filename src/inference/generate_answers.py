@@ -64,6 +64,8 @@ def _normalize_retrieved_docs(items: list[dict[str, Any]]) -> list[dict[str, Any
                 "score": float(item.get("score", 0.0)),
                 "rank": int(item.get("rank", 0)),
                 "text": str(item.get("text", "")),
+                "start": item.get("start"),
+                "end": item.get("end"),
             }
         )
     return normalized
