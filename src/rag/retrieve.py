@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +29,26 @@ def _load_sentence_transformer(model_name: str) -> Any:
     return SentenceTransformer(model_name)
 
 
-def load_mapping(mapping_path: Path) -> dict[str, Any]:
-    if not mapping_path.exists():
-        raise FileNotFoundError(f"Chunk mapping file not found: {mapping_path}")
-    return json.loads(mapping_path.read_text(encoding="utf-8"))
+@lru_cache(maxsize=8)
+def load_mapping(mapping_path: str) -> dict[str, Any]:
+    path = Path(mapping_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Chunk mapping file not found: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=8)
+def load_index(index_path: str) -> Any:
+    path = Path(index_path)
+    if not path.exists():
+        raise FileNotFoundError(f"FAISS index not found: {path}")
+    faiss = _import_faiss()
+    return faiss.read_index(str(path))
+
+
+@lru_cache(maxsize=4)
+def load_embedding_model(model_name: str) -> Any:
+    return _load_sentence_transformer(model_name)
 
 
 def retrieve(
@@ -41,11 +58,8 @@ def retrieve(
     mapping_path: Path | str = Path("data/corpus/chunks/wiki_demo_chunks.json"),
     embedding_model_name: str | None = None,
 ) -> list[dict[str, Any]]:
-    index_path = Path(index_path)
-    mapping_path = Path(mapping_path)
-
-    if not index_path.exists():
-        raise FileNotFoundError(f"FAISS index not found: {index_path}")
+    index_path = str(Path(index_path))
+    mapping_path = str(Path(mapping_path))
 
     metadata = load_mapping(mapping_path)
     chunks: list[dict[str, Any]] = metadata.get("chunks", [])
@@ -56,7 +70,7 @@ def retrieve(
     if not model_name:
         raise ValueError("embedding_model_name not provided and missing from mapping metadata")
 
-    model = _load_sentence_transformer(model_name)
+    model = load_embedding_model(model_name)
     qvec = model.encode(
         [query],
         convert_to_numpy=True,
@@ -64,8 +78,7 @@ def retrieve(
     )
     qvec = np.asarray(qvec, dtype=np.float32)
 
-    faiss = _import_faiss()
-    index = faiss.read_index(str(index_path))
+    index = load_index(index_path)
     k = max(1, min(int(top_k), len(chunks)))
     scores, indices = index.search(qvec, k)
 

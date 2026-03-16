@@ -87,22 +87,61 @@ def build_faiss_index(vectors: np.ndarray) -> Any:
     return index
 
 
+def load_chunks_payload(chunks_path: Path) -> tuple[list[dict[str, Any]], str | None]:
+    if not chunks_path.exists():
+        raise FileNotFoundError(f"Chunks file not found: {chunks_path}")
+
+    payload = json.loads(chunks_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"Expected dict payload in {chunks_path}, got {type(payload)}")
+
+    chunks = payload.get("chunks", [])
+    if not isinstance(chunks, list):
+        raise TypeError("payload['chunks'] must be a list")
+
+    embedding_model_name = payload.get("embedding_model_name")
+    return chunks, embedding_model_name
+
+
 def build_and_save_index(
-    corpus_path: Path,
+    corpus_path: Path | None,
+    chunks_path: Path | None,
     index_path: Path,
     mapping_path: Path,
-    embedding_model_name: str,
+    embedding_model_name: str | None,
     chunk_size: int,
     chunk_overlap: int,
     batch_size: int,
 ) -> dict[str, Any]:
-    if not corpus_path.exists():
-        raise FileNotFoundError(f"Corpus file not found: {corpus_path}")
+    if corpus_path is None and chunks_path is None:
+        raise ValueError("Either corpus_path or chunks_path must be provided.")
+    if corpus_path is not None and chunks_path is not None:
+        raise ValueError("Provide only one of corpus_path or chunks_path, not both.")
 
-    text = corpus_path.read_text(encoding="utf-8")
-    chunks = chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    if not chunks:
-        raise RuntimeError(f"No chunks produced from corpus: {corpus_path}")
+    source_type: str
+    chunks: list[dict[str, Any]]
+
+    if chunks_path is not None:
+        chunks, embedded_model_in_file = load_chunks_payload(chunks_path)
+        if not chunks:
+            raise RuntimeError(f"No chunks found in: {chunks_path}")
+        embedding_model_name = embedding_model_name or embedded_model_in_file
+        if not embedding_model_name:
+            raise ValueError("embedding_model_name not provided and missing from chunks metadata")
+        source_type = "chunks"
+    else:
+        assert corpus_path is not None
+        if not corpus_path.exists():
+            raise FileNotFoundError(f"Corpus file not found: {corpus_path}")
+
+        text = corpus_path.read_text(encoding="utf-8")
+        chunks = chunk_text(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        if not chunks:
+            raise RuntimeError(f"No chunks produced from corpus: {corpus_path}")
+
+        if not embedding_model_name:
+            raise ValueError("embedding_model_name must be provided when building from raw corpus")
+        source_type = "corpus"
 
     vectors = encode_texts(
         [chunk["text"] for chunk in chunks],
@@ -116,23 +155,25 @@ def build_and_save_index(
 
     faiss = _import_faiss()
     faiss.write_index(index, str(index_path))
+
+    mapping_payload = {
+        "embedding_model_name": embedding_model_name,
+        "num_chunks": len(chunks),
+        "chunks": chunks,
+    }
+    if source_type == "corpus":
+        mapping_payload["chunk_size"] = chunk_size
+        mapping_payload["chunk_overlap"] = chunk_overlap
+
     mapping_path.write_text(
-        json.dumps(
-            {
-                "embedding_model_name": embedding_model_name,
-                "chunk_size": chunk_size,
-                "chunk_overlap": chunk_overlap,
-                "num_chunks": len(chunks),
-                "chunks": chunks,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps(mapping_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
     return {
-        "corpus_path": str(corpus_path),
+        "source_type": source_type,
+        "corpus_path": str(corpus_path) if corpus_path else None,
+        "chunks_path": str(chunks_path) if chunks_path else None,
         "index_path": str(index_path),
         "mapping_path": str(mapping_path),
         "num_chunks": len(chunks),
@@ -142,30 +183,36 @@ def build_and_save_index(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build FAISS index for smoke-test RAG.")
+    parser = argparse.ArgumentParser(description="Build FAISS index for RAG.")
     parser.add_argument(
         "--corpus-path",
         type=Path,
-        default=Path("data/corpus/raw/wiki_demo.txt"),
-        help="Raw text corpus path.",
+        default=None,
+        help="Raw text corpus path. Use this for txt-like corpus.",
+    )
+    parser.add_argument(
+        "--chunks-path",
+        type=Path,
+        default=None,
+        help="Pre-built chunks json path. Use this for already chunked corpus.",
     )
     parser.add_argument(
         "--index-path",
         type=Path,
-        default=Path("data/corpus/indexes/wiki_demo.faiss"),
+        required=True,
         help="Output FAISS index path.",
     )
     parser.add_argument(
         "--mapping-path",
         type=Path,
-        default=Path("data/corpus/chunks/wiki_demo_chunks.json"),
+        required=True,
         help="Output chunk mapping json path.",
     )
     parser.add_argument(
         "--embedding-model-name",
         type=str,
-        default="BAAI/bge-small-zh-v1.5",
-        help="SentenceTransformer model name/path.",
+        default=None,
+        help="SentenceTransformer model name/path. Optional if chunks file already stores it.",
     )
     parser.add_argument("--chunk-size", type=int, default=512, help="Chunk size in characters.")
     parser.add_argument("--chunk-overlap", type=int, default=64, help="Chunk overlap in characters.")
@@ -177,6 +224,7 @@ def main() -> None:
     args = parse_args()
     result = build_and_save_index(
         corpus_path=args.corpus_path,
+        chunks_path=args.chunks_path,
         index_path=args.index_path,
         mapping_path=args.mapping_path,
         embedding_model_name=args.embedding_model_name,

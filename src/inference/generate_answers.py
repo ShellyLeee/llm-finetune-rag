@@ -59,9 +59,10 @@ def _normalize_retrieved_docs(items: list[dict[str, Any]]) -> list[dict[str, Any
     for item in items:
         normalized.append(
             {
-                "doc_id": str(item.get("doc_id", "")),
+                "doc_id": str(item.get("doc_id", item.get("chunk_id", ""))),
                 "chunk_id": str(item.get("chunk_id", "")),
                 "score": float(item.get("score", 0.0)),
+                "rank": int(item.get("rank", 0)),
                 "text": str(item.get("text", "")),
             }
         )
