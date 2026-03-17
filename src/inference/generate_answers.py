@@ -11,7 +11,7 @@ def load_model_and_tokenizer(model_path: str) -> tuple[Any, Any]:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, trust_remote_code=True)
 
     adapter_cfg = Path(model_path) / "adapter_config.json"
     if adapter_cfg.exists():
@@ -22,22 +22,50 @@ def load_model_and_tokenizer(model_path: str) -> tuple[Any, Any]:
                 model_path,
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map="auto",
+                trust_remote_code=True,
             )
         except Exception:
             model = AutoModelForCausalLM.from_pretrained(
                 model_path,
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map="auto",
+                trust_remote_code=True,
             )
     else:
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             device_map="auto",
+            trust_remote_code=True,
         )
 
     model.eval()
     return model, tokenizer
+
+
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v is not None]
+    return [str(value)]
+
+
+def extract_reference_fields(sample: dict[str, Any]) -> dict[str, Any]:
+    answers = _as_list(sample.get("answers", []))
+    answer_aliases = _as_list(sample.get("answer_aliases", []))
+    normalized_answers = _as_list(sample.get("normalized_answers", []))
+    normalized_aliases = _as_list(sample.get("normalized_aliases", []))
+
+    gold_answer = answers[0] if answers else ""
+
+    return {
+        "gold_answer": gold_answer,
+        "gold_answers": answers,
+        "answer_aliases": answer_aliases,
+        "normalized_answers": normalized_answers,
+        "normalized_aliases": normalized_aliases,
+    }
 
 
 def build_prompt(question: str, mode: str, retrieved_docs: list[dict[str, Any]]) -> str:
@@ -46,12 +74,20 @@ def build_prompt(question: str, mode: str, retrieved_docs: list[dict[str, Any]])
             f"[{doc['chunk_id']}] {doc['text']}" for doc in retrieved_docs if doc.get("text")
         )
         return (
-            "Answer the question using the provided context. "
-            "If context is insufficient, say so briefly.\n\n"
-            f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
+            "Answer the question using the provided context.\n"
+            "Give only a short answer phrase.\n"
+            "If the context is insufficient, output only: Insufficient context.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Question: {question}\n"
+            "Answer:"
         )
 
-    return f"Question: {question}\nAnswer:"
+    return (
+        "Answer the question accurately.\n"
+        "Give only a short answer phrase.\n\n"
+        f"Question: {question}\n"
+        "Answer:"
+    )
 
 
 def _normalize_retrieved_docs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -75,13 +111,14 @@ def _generate_text(
     model: Any,
     tokenizer: Any,
     prompt: str,
-    max_new_tokens: int = 256,
+    max_new_tokens: int = 32,
     temperature: float = 0.0,
 ) -> str:
     import torch
 
     do_sample = temperature > 0.0
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
     generate_kwargs: dict[str, Any] = {
         "max_new_tokens": max_new_tokens,
         "do_sample": do_sample,
@@ -89,10 +126,21 @@ def _generate_text(
     }
     if do_sample:
         generate_kwargs["temperature"] = temperature
+
     with torch.no_grad():
         outputs = model.generate(**inputs, **generate_kwargs)
+
     generated_ids = outputs[0][inputs["input_ids"].shape[-1] :]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    text = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    # 简单清理，避免有些模型把 "Answer:" 又重复输出
+    if text.lower().startswith("answer:"):
+        text = text[len("answer:") :].strip()
+
+    # 只保留第一行，减少 verbose 输出对 EM/F1 的伤害
+    text = text.splitlines()[0].strip()
+
+    return text
 
 
 def generate_single_sample(
@@ -104,11 +152,13 @@ def generate_single_sample(
     index_path: str = "data/corpus/indexes/wiki_demo.faiss",
     mapping_path: str = "data/corpus/chunks/wiki_demo_chunks.json",
     embedding_model_name: str | None = None,
-    max_new_tokens: int = 256,
+    max_new_tokens: int = 32,
     temperature: float = 0.0,
 ) -> dict[str, Any]:
     question = str(sample.get("question", ""))
-    gold_answer = str(sample.get("gold_answer", sample.get("reference", "")))
+    dataset = str(sample.get("dataset", ""))
+
+    reference_fields = extract_reference_fields(sample)
 
     retrieved_docs: list[dict[str, Any]] = []
     if mode in {"rag", "sft_rag"}:
@@ -133,8 +183,9 @@ def generate_single_sample(
 
     return {
         "id": str(sample.get("id", "")),
+        "dataset": dataset,
         "question": question,
-        "gold_answer": gold_answer,
+        **reference_fields,
         "mode": mode,
         "prediction": prediction,
         "retrieved_docs": retrieved_docs if mode in {"rag", "sft_rag"} else [],

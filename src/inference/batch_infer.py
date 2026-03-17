@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
         help="Used in rag/sft_rag modes.",
     )
     parser.add_argument("--embedding_model_name", type=str, default=None)
-    parser.add_argument("--max_new_tokens", type=int, default=256)
+    parser.add_argument("--max_new_tokens", type=int, default=32)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max_samples", type=int, default=0, help="0 means all samples.")
     return parser.parse_args()
@@ -51,16 +51,27 @@ def load_eval_samples(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def validate_sample(sample: dict[str, Any], idx: int) -> None:
+    if "question" not in sample:
+        raise ValueError(f"Sample at index {idx} missing required field: question")
+
+
 def main() -> None:
     args = parse_args()
     samples = load_eval_samples(args.eval_file)
+
     if args.max_samples > 0:
         samples = samples[: args.max_samples]
 
+    for i, sample in enumerate(samples):
+        validate_sample(sample, i)
+
     model, tokenizer = load_model_and_tokenizer(args.model_path)
 
-    predictions = []
-    for sample in samples:
+    predictions: list[dict[str, Any]] = []
+    total = len(samples)
+
+    for i, sample in enumerate(samples, start=1):
         pred = generate_single_sample(
             sample=sample,
             mode=args.mode,
@@ -74,6 +85,9 @@ def main() -> None:
             temperature=args.temperature,
         )
         predictions.append(pred)
+
+        if i % 50 == 0 or i == total:
+            print(f"[batch_infer] Processed {i}/{total}")
 
     save_jsonl(predictions, args.output_file)
     print(f"[batch_infer] Wrote {len(predictions)} predictions to {args.output_file}")
