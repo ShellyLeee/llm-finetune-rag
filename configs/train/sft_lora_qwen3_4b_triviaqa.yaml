@@ -8,10 +8,10 @@ do_train: true
 finetuning_type: lora
 lora_rank: 8
 lora_target: all
-# deepspeed: ds_config/zero2.json  # choices: [ds_config/zero2.json, ds_config/zero3.json]
+deepspeed: ds_config/zero2.json  # choices: [ds_config/zero2.json, ds_config/zero3.json]
 
 ### dataset
-dataset: triviaqa_rc_nocontext_train
+dataset: triviaqa_train
 template: qwen3_nothink
 cutoff_len: 512  # trivia_qa for short questions
 max_samples: 20000
@@ -39,7 +39,7 @@ ddp_timeout: 180000000
 resume_from_checkpoint: null
 
 ### eval
-eval_dataset: triviaqa_rc_nocontext_val
+eval_dataset: triviaqa_val
 per_device_eval_batch_size: 1
 eval_strategy: steps
 eval_steps: 500

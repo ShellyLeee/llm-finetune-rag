@@ -8,7 +8,7 @@
   "identity": {
     "file_name": "identity.json"
   },
-    "triviaqa_rc_nocontext_train": {
+    "triviaqa_train": {
     "file_name": "processed/train/triviaqa_train.json",
     "columns": {
       "prompt": "instruction",
@@ -17,7 +17,7 @@
       "system": "system"
     }
   },
-  "triviaqa_rc_nocontext_val": {
+  "triviaqa_val": {
     "file_name": "processed/train/triviaqa_val.json",
     "columns": {
       "prompt": "instruction",
