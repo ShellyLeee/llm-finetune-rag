@@ -1,21 +1,29 @@
 {
-  "demo_sft": {
-    "file_name": "processed/train/train.jsonl",
-    "formatting": "sharegpt",
-    "columns": {
-      "messages": "messages"
-    },
-    "tags": {
-      "role_tag": "role",
-      "content_tag": "content",
-      "user_tag": "user",
-      "assistant_tag": "assistant"
-    }
-  },
   "alpaca_zh_demo": {
     "file_name": "alpaca_zh_demo.json"
   },
+  "alpaca_en_demo": {
+    "file_name": "alpaca_en_demo.json"
+  },
   "identity": {
     "file_name": "identity.json"
+  },
+    "triviaqa_rc_nocontext_train": {
+    "file_name": "triviaqa_rc_nocontext_train.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "system": "system"
+    }
+  },
+  "triviaqa_rc_nocontext_val": {
+    "file_name": "triviaqa_rc_nocontext_val.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "system": "system"
+    }
   }
 }
