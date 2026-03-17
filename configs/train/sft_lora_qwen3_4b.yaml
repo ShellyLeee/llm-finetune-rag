@@ -8,6 +8,7 @@ do_train: true
 finetuning_type: lora
 lora_rank: 8
 lora_target: all
+# deepspeed: ds_config/zero2.json  # choices: [ds_config/zero2.json, ds_config/zero3.json]
 
 ### dataset
 dataset: alpaca_zh_demo,identity
@@ -18,7 +19,7 @@ preprocessing_num_workers: 16
 dataloader_num_workers: 4
 
 ### output
-output_dir: runs/qwen3-4b/lora/sft
+output_dir: runs/qwen3-4b/lora/qwen3_4b_sft_exp1
 logging_steps: 10
 save_steps: 500
 plot_loss: true
