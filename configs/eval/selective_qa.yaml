@@ -1,0 +1,23 @@
+# Example config: uncertainty scoring + selective abstention + stricter OOD refusal.
+predictions_file: reports/experiments/rag_default/predictions.jsonl
+output_dir: reports/experiments/rag_default/eval_selective
+split_type_field: split_type
+default_split_type: id
+ood_label: ood
+
+uncertainty:
+  enabled: true
+  score_type: avg_logprob
+  last_k: 5
+  # Used only when score_type == weighted.
+  score_weights:
+    avg_logprob: 0.6
+    min_logprob: 0.4
+
+selective:
+  enabled: true
+  mode: target_coverage  # fixed | target_coverage
+  threshold: -2.0        # used when mode == fixed
+  target_coverage: 0.8   # used when mode == target_coverage
+  ood_delta: 0.2         # tau_ood = tau_id + ood_delta
+  refusal_text: "I'm not confident enough to answer this reliably."

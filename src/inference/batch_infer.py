@@ -53,6 +53,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reranker_type", type=str, default="cross_encoder")
     parser.add_argument("--rerank_max_length", type=int, default=512)
     parser.add_argument("--rerank_batch_size", type=int, default=16)
+    parser.add_argument("--output_token_logprobs", action="store_true")
+    parser.add_argument("--logprob_last_k", type=int, default=5)
     return parser.parse_args()
 
 
@@ -78,6 +80,14 @@ def load_config_defaults(config_path: Path | None) -> dict[str, Any]:
     }
     normalized: dict[str, Any] = {}
     for key, value in payload.items():
+        if key == "uncertainty" and isinstance(value, dict):
+            # Keep config-driven behavior simple: allow inference-time logprob toggles
+            # under an uncertainty block.
+            if "enabled" in value:
+                normalized["output_token_logprobs"] = bool(value.get("enabled"))
+            if "last_k" in value:
+                normalized["logprob_last_k"] = int(value.get("last_k"))
+            continue
         normalized[aliases.get(key, key)] = value
     return normalized
 
@@ -147,6 +157,8 @@ def main() -> None:
             reranker_type=args.reranker_type,
             rerank_max_length=args.rerank_max_length,
             rerank_batch_size=args.rerank_batch_size,
+            output_token_logprobs=args.output_token_logprobs,
+            logprob_last_k=args.logprob_last_k,
         )
         predictions.append(pred)
 

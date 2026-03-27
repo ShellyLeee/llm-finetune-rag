@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.eval.uncertainty import compute_logprob_features
 from src.rag.rerank import build_reranker, filter_reranked_docs
 from src.rag.retrieve import retrieve
 
@@ -195,7 +196,9 @@ def _generate_text(
     prompt: str,
     max_new_tokens: int = 32,
     temperature: float = 0.0,
-) -> str:
+    output_token_logprobs: bool = False,
+    logprob_last_k: int = 5,
+) -> dict[str, Any]:
     import torch
 
     do_sample = temperature > 0.0
@@ -209,10 +212,37 @@ def _generate_text(
     if do_sample:
         generate_kwargs["temperature"] = temperature
 
+    if output_token_logprobs:
+        generate_kwargs["return_dict_in_generate"] = True
+        generate_kwargs["output_scores"] = True
+
     with torch.no_grad():
         outputs = model.generate(**inputs, **generate_kwargs)
 
-    generated_ids = outputs[0][inputs["input_ids"].shape[-1] :]
+    generated_token_ids: list[int]
+    token_logprobs: list[float] = []
+
+    if output_token_logprobs and hasattr(outputs, "sequences"):
+        sequences = outputs.sequences
+        generated_ids = sequences[0][inputs["input_ids"].shape[-1] :]
+        generated_token_ids = [int(x) for x in generated_ids.tolist()]
+
+        if hasattr(outputs, "scores") and outputs.scores:
+            transition_scores = model.compute_transition_scores(
+                sequences=sequences,
+                scores=outputs.scores,
+                normalize_logits=True,
+            )
+            gen_steps = len(outputs.scores)
+            token_logprobs = [float(transition_scores[0, i].item()) for i in range(gen_steps)]
+            if len(token_logprobs) > len(generated_token_ids):
+                token_logprobs = token_logprobs[: len(generated_token_ids)]
+            elif len(token_logprobs) < len(generated_token_ids):
+                generated_token_ids = generated_token_ids[: len(token_logprobs)]
+    else:
+        generated_ids = outputs[0][inputs["input_ids"].shape[-1] :]
+        generated_token_ids = [int(x) for x in generated_ids.tolist()]
+
     text = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     # 简单清理，避免有些模型把 "Answer:" 又重复输出
@@ -222,7 +252,17 @@ def _generate_text(
     # 只保留第一行，减少 verbose 输出对 EM/F1 的伤害
     text = text.splitlines()[0].strip()
 
-    return text
+    logprob_features = compute_logprob_features(token_logprobs, last_k=logprob_last_k)
+
+    return {
+        "prediction_raw": text,
+        "generated_token_ids": generated_token_ids,
+        "token_logprobs": token_logprobs,
+        "avg_logprob": logprob_features["avg_logprob"],
+        "min_logprob": logprob_features["min_logprob"],
+        "last_k_avg_logprob": logprob_features["last_k_avg_logprob"],
+        "length_normalized_nll": logprob_features["length_normalized_nll"],
+    }
 
 
 def generate_single_sample(
@@ -247,6 +287,8 @@ def generate_single_sample(
     reranker_type: str = "cross_encoder",
     rerank_max_length: int = 512,
     rerank_batch_size: int = 16,
+    output_token_logprobs: bool = False,
+    logprob_last_k: int = 5,
 ) -> dict[str, Any]:
     question = str(sample.get("question", ""))
     dataset = str(sample.get("dataset", ""))
@@ -298,21 +340,34 @@ def generate_single_sample(
         retrieved_docs=retrieved_docs,
         allow_ignore_context=allow_ignore_context,
     )
-    prediction = _generate_text(
+    generation = _generate_text(
         model=model,
         tokenizer=tokenizer,
         prompt=prompt,
         max_new_tokens=max_new_tokens,
         temperature=temperature,
+        output_token_logprobs=output_token_logprobs,
+        logprob_last_k=logprob_last_k,
     )
+    prediction = str(generation["prediction_raw"])
 
     return {
         "id": str(sample.get("id", "")),
         "dataset": dataset,
         "question": question,
+        "split_type": str(sample.get("split_type", "id")).lower(),
         **reference_fields,
         "mode": mode,
+        "prediction_raw": prediction,
+        # Backward-compatible field used by current eval scripts.
         "prediction": prediction,
+        "prediction_final": prediction,
+        "generated_token_ids": generation["generated_token_ids"],
+        "token_logprobs": generation["token_logprobs"],
+        "avg_logprob": generation["avg_logprob"],
+        "min_logprob": generation["min_logprob"],
+        "last_k_avg_logprob": generation["last_k_avg_logprob"],
+        "length_normalized_nll": generation["length_normalized_nll"],
         "retrieved_docs": retrieved_docs if mode in {"rag", "sft_rag"} else [],
         "retrieval_debug": retrieval_debug if mode in {"rag", "sft_rag"} else None,
     }
