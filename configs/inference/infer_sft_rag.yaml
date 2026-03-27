@@ -2,8 +2,26 @@
 mode: sft_rag
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
 adapter_name_or_path: runs/qwen2.5-7b/lora_sft
+eval_file: data/eval/dummy_eval.jsonl
+output_file: reports/experiments/sft_rag_default/predictions.jsonl
 index_path: data/corpus/indexes/wiki_demo.faiss
 mapping_path: data/corpus/chunks/wiki_demo_chunks.json
 top_k: 3
-max_new_tokens: 512
-# TODO: enable merged SFT adapter + retrieval workflow.
+max_new_tokens: 32
+temperature: 0.0
+
+# Robust prompt behavior.
+allow_ignore_context: true
+max_context_chunks: 0
+
+# Optional reranking.
+use_rerank: true
+reranker_type: cross_encoder
+rerank_model_name: BAAI/bge-reranker-base
+rerank_top_n: 0
+rerank_keep_n: 0
+rerank_score_threshold: null
+rerank_max_length: 512
+rerank_batch_size: 16
+
+log_rag_debug: false

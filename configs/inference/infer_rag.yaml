@@ -1,8 +1,27 @@
 # RAG inference placeholder config.
 mode: rag
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+eval_file: data/eval/dummy_eval.jsonl
+output_file: reports/experiments/rag_default/predictions.jsonl
 index_path: data/corpus/indexes/wiki_demo.faiss
 mapping_path: data/corpus/chunks/wiki_demo_chunks.json
 top_k: 3
-max_new_tokens: 512
-# TODO: connect to src/rag pipeline and real generation backend.
+max_new_tokens: 32
+temperature: 0.0
+
+# Robust prompt behavior.
+allow_ignore_context: true
+max_context_chunks: 0  # 0 means no extra cap (backward-compatible)
+
+# Optional reranking (disabled by default for backward compatibility).
+use_rerank: true
+reranker_type: cross_encoder
+rerank_model_name: BAAI/bge-reranker-base
+rerank_top_n: 0  # 0 => fall back to top_k
+rerank_keep_n: 0  # 0 => fall back to top_k
+rerank_score_threshold: null
+rerank_max_length: 512
+rerank_batch_size: 16
+
+# Optional debug logging per sample.
+log_rag_debug: false

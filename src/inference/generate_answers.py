@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.rag.rerank import build_reranker, filter_reranked_docs
 from src.rag.retrieve import retrieve
 
 
@@ -68,11 +69,27 @@ def extract_reference_fields(sample: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_prompt(question: str, mode: str, retrieved_docs: list[dict[str, Any]]) -> str:
+def build_prompt(
+    question: str,
+    mode: str,
+    retrieved_docs: list[dict[str, Any]],
+    allow_ignore_context: bool = False,
+) -> str:
     if mode in {"rag", "sft_rag"} and retrieved_docs:
         context = "\n\n".join(
             f"[{doc['chunk_id']}] {doc['text']}" for doc in retrieved_docs if doc.get("text")
         )
+        if allow_ignore_context:
+            return (
+                "Answer the question concisely.\n"
+                "Use retrieved context only if it is relevant.\n"
+                "If context is irrelevant or insufficient, ignore it and use your own knowledge.\n"
+                "Do not use unrelated retrieved text as evidence.\n"
+                "Give only a short answer phrase.\n\n"
+                f"Context:\n{context}\n\n"
+                f"Question: {question}\n"
+                "Answer:"
+            )
         return (
             "Answer the question using the provided context.\n"
             "Give only a short answer phrase.\n"
@@ -88,6 +105,71 @@ def build_prompt(question: str, mode: str, retrieved_docs: list[dict[str, Any]])
         f"Question: {question}\n"
         "Answer:"
     )
+
+
+def _apply_rerank(
+    query: str,
+    retrieved_docs: list[dict[str, Any]],
+    use_rerank: bool,
+    rerank_model_name: str | None,
+    rerank_top_n: int,
+    rerank_keep_n: int,
+    rerank_score_threshold: float | None,
+    reranker_type: str = "cross_encoder",
+    rerank_max_length: int = 512,
+    rerank_batch_size: int = 16,
+    max_context_chunks: int = 0,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Optionally rerank/filter docs and return selected docs with debug info."""
+    candidate_n = max(0, int(rerank_top_n))
+    keep_n = max(0, int(rerank_keep_n))
+    threshold = float(rerank_score_threshold) if rerank_score_threshold is not None else None
+
+    debug: dict[str, Any] = {
+        "retrieved_chunk_count": len(retrieved_docs),
+        "rerank_enabled": bool(use_rerank),
+        "rerank_candidate_count": 0,
+        "reranked_chunk_count": len(retrieved_docs),
+        "top_rerank_scores": [],
+        "fallback_no_context": False,
+    }
+
+    if not retrieved_docs:
+        debug["fallback_no_context"] = True
+        return [], debug
+
+    selected_docs = list(retrieved_docs)
+    if use_rerank:
+        rerank_input = selected_docs[:candidate_n] if candidate_n > 0 else []
+        debug["rerank_candidate_count"] = len(rerank_input)
+
+        if rerank_input and keep_n > 0:
+            reranker = build_reranker(
+                use_rerank=True,
+                rerank_model_name=rerank_model_name,
+                reranker_type=reranker_type,
+                rerank_max_length=rerank_max_length,
+                rerank_batch_size=rerank_batch_size,
+            )
+            reranked = reranker.rerank(query=query, docs=rerank_input)
+            selected_docs = filter_reranked_docs(
+                reranked_items=reranked,
+                keep_n=keep_n,
+                score_threshold=threshold,
+            )
+            debug["top_rerank_scores"] = [round(float(x.score), 4) for x in reranked[:3]]
+        else:
+            selected_docs = []
+    else:
+        # Backward-compatible default: preserve retrieved list unless a context cap is explicitly set.
+        debug["rerank_candidate_count"] = len(selected_docs)
+
+    if max_context_chunks and max_context_chunks > 0:
+        selected_docs = selected_docs[: int(max_context_chunks)]
+
+    debug["reranked_chunk_count"] = len(selected_docs)
+    debug["fallback_no_context"] = len(selected_docs) == 0
+    return selected_docs, debug
 
 
 def _normalize_retrieved_docs(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -154,6 +236,17 @@ def generate_single_sample(
     embedding_model_name: str | None = None,
     max_new_tokens: int = 32,
     temperature: float = 0.0,
+    use_rerank: bool = False,
+    rerank_model_name: str | None = None,
+    rerank_top_n: int = 0,
+    rerank_keep_n: int = 0,
+    rerank_score_threshold: float | None = None,
+    allow_ignore_context: bool = False,
+    max_context_chunks: int = 0,
+    log_rag_debug: bool = False,
+    reranker_type: str = "cross_encoder",
+    rerank_max_length: int = 512,
+    rerank_batch_size: int = 16,
 ) -> dict[str, Any]:
     question = str(sample.get("question", ""))
     dataset = str(sample.get("dataset", ""))
@@ -161,8 +254,9 @@ def generate_single_sample(
     reference_fields = extract_reference_fields(sample)
 
     retrieved_docs: list[dict[str, Any]] = []
+    retrieval_debug: dict[str, Any] | None = None
     if mode in {"rag", "sft_rag"}:
-        retrieved_docs = _normalize_retrieved_docs(
+        retrieved_docs_raw = _normalize_retrieved_docs(
             retrieve(
                 query=question,
                 top_k=top_k,
@@ -171,8 +265,39 @@ def generate_single_sample(
                 embedding_model_name=embedding_model_name,
             )
         )
+        # Conservative defaults keep old behavior unless rerank/caps are explicitly enabled.
+        effective_rerank_top_n = int(rerank_top_n) if rerank_top_n and rerank_top_n > 0 else int(top_k)
+        effective_rerank_keep_n = int(rerank_keep_n) if rerank_keep_n and rerank_keep_n > 0 else int(top_k)
+        retrieved_docs, retrieval_debug = _apply_rerank(
+            query=question,
+            retrieved_docs=retrieved_docs_raw,
+            use_rerank=use_rerank,
+            rerank_model_name=rerank_model_name,
+            rerank_top_n=effective_rerank_top_n,
+            rerank_keep_n=effective_rerank_keep_n,
+            rerank_score_threshold=rerank_score_threshold,
+            reranker_type=reranker_type,
+            rerank_max_length=rerank_max_length,
+            rerank_batch_size=rerank_batch_size,
+            max_context_chunks=max_context_chunks,
+        )
 
-    prompt = build_prompt(question=question, mode=mode, retrieved_docs=retrieved_docs)
+        if log_rag_debug and retrieval_debug is not None:
+            print(
+                "[rag_debug] "
+                f"id={sample.get('id', '')} "
+                f"retrieved={retrieval_debug['retrieved_chunk_count']} "
+                f"reranked={retrieval_debug['reranked_chunk_count']} "
+                f"top_scores={retrieval_debug['top_rerank_scores']} "
+                f"fallback_no_context={retrieval_debug['fallback_no_context']}"
+            )
+
+    prompt = build_prompt(
+        question=question,
+        mode=mode,
+        retrieved_docs=retrieved_docs,
+        allow_ignore_context=allow_ignore_context,
+    )
     prediction = _generate_text(
         model=model,
         tokenizer=tokenizer,
@@ -189,6 +314,7 @@ def generate_single_sample(
         "mode": mode,
         "prediction": prediction,
         "retrieved_docs": retrieved_docs if mode in {"rag", "sft_rag"} else [],
+        "retrieval_debug": retrieval_debug if mode in {"rag", "sft_rag"} else None,
     }
 
 

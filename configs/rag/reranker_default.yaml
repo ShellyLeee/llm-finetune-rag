@@ -1,5 +1,9 @@
-# Reranker placeholder config.
-enabled: false
-model_name_or_path: null
-top_n: 3
-# TODO: set enabled=true and configure a reranker model.
+# Default reranker settings for inference-time RAG.
+use_rerank: false
+reranker_type: cross_encoder
+rerank_model_name: null
+rerank_top_n: 0
+rerank_keep_n: 0
+rerank_score_threshold: null
+rerank_max_length: 512
+rerank_batch_size: 16
