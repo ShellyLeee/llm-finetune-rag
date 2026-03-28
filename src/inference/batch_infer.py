@@ -55,6 +55,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rerank_batch_size", type=int, default=16)
     parser.add_argument("--output_token_logprobs", action="store_true")
     parser.add_argument("--logprob_last_k", type=int, default=5)
+    parser.add_argument("--uncertainty_enabled", action="store_true")
+    parser.add_argument(
+        "--uncertainty_score_type",
+        type=str,
+        default="avg_logprob",
+        choices=["avg_logprob", "min_logprob", "last_k_avg_logprob", "length_normalized_nll", "weighted"],
+    )
+    parser.add_argument(
+        "--uncertainty_score_weights",
+        type=str,
+        default="",
+        help="JSON object for weighted score, e.g. '{\"avg_logprob\":0.7,\"min_logprob\":0.3}'.",
+    )
+    parser.add_argument("--selective_enabled", action="store_true")
+    parser.add_argument("--selective_threshold", type=float, default=-2.0)
+    parser.add_argument("--selective_ood_delta", type=float, default=0.0)
+    parser.add_argument(
+        "--selective_refusal_text",
+        type=str,
+        default="I'm not confident enough to answer this reliably.",
+    )
     return parser.parse_args()
 
 
@@ -81,12 +102,25 @@ def load_config_defaults(config_path: Path | None) -> dict[str, Any]:
     normalized: dict[str, Any] = {}
     for key, value in payload.items():
         if key == "uncertainty" and isinstance(value, dict):
-            # Keep config-driven behavior simple: allow inference-time logprob toggles
-            # under an uncertainty block.
             if "enabled" in value:
                 normalized["output_token_logprobs"] = bool(value.get("enabled"))
+                normalized["uncertainty_enabled"] = bool(value.get("enabled"))
             if "last_k" in value:
                 normalized["logprob_last_k"] = int(value.get("last_k"))
+            if "score_type" in value:
+                normalized["uncertainty_score_type"] = str(value.get("score_type"))
+            if "score_weights" in value and isinstance(value.get("score_weights"), dict):
+                normalized["uncertainty_score_weights"] = json.dumps(value.get("score_weights"))
+            continue
+        if key == "selective" and isinstance(value, dict):
+            if "enabled" in value:
+                normalized["selective_enabled"] = bool(value.get("enabled"))
+            if "threshold" in value:
+                normalized["selective_threshold"] = float(value.get("threshold"))
+            if "ood_delta" in value:
+                normalized["selective_ood_delta"] = float(value.get("ood_delta"))
+            if "refusal_text" in value:
+                normalized["selective_refusal_text"] = str(value.get("refusal_text"))
             continue
         normalized[aliases.get(key, key)] = value
     return normalized
@@ -110,6 +144,18 @@ def validate_sample(sample: dict[str, Any], idx: int) -> None:
         raise ValueError(f"Sample at index {idx} missing required field: question")
 
 
+def parse_score_weights(raw: str) -> dict[str, float] | None:
+    if not raw:
+        return None
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise TypeError("uncertainty_score_weights must be a JSON object.")
+    normalized: dict[str, float] = {}
+    for key, value in payload.items():
+        normalized[str(key)] = float(value)
+    return normalized
+
+
 def main() -> None:
     args = parse_args()
     if not args.mode:
@@ -120,6 +166,9 @@ def main() -> None:
         raise ValueError("`eval_file` is required (CLI flag or config_path).")
     if args.output_file is None:
         raise ValueError("`output_file` is required (CLI flag or config_path).")
+
+    score_weights = parse_score_weights(args.uncertainty_score_weights)
+    output_token_logprobs = bool(args.output_token_logprobs or args.uncertainty_enabled)
 
     samples = load_eval_samples(args.eval_file)
 
@@ -157,8 +206,15 @@ def main() -> None:
             reranker_type=args.reranker_type,
             rerank_max_length=args.rerank_max_length,
             rerank_batch_size=args.rerank_batch_size,
-            output_token_logprobs=args.output_token_logprobs,
+            output_token_logprobs=output_token_logprobs,
             logprob_last_k=args.logprob_last_k,
+            uncertainty_enabled=args.uncertainty_enabled,
+            uncertainty_score_type=args.uncertainty_score_type,
+            uncertainty_score_weights=score_weights,
+            selective_enabled=args.selective_enabled,
+            selective_threshold=args.selective_threshold,
+            selective_ood_delta=args.selective_ood_delta,
+            selective_refusal_text=args.selective_refusal_text,
         )
         predictions.append(pred)
 

@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.eval.selective import apply_abstention, threshold_for_split
 from src.eval.uncertainty import compute_logprob_features
+from src.eval.uncertainty import compute_confidence_score
 from src.rag.rerank import build_reranker, filter_reranked_docs
 from src.rag.retrieve import retrieve
 
@@ -289,6 +291,13 @@ def generate_single_sample(
     rerank_batch_size: int = 16,
     output_token_logprobs: bool = False,
     logprob_last_k: int = 5,
+    uncertainty_enabled: bool = False,
+    uncertainty_score_type: str = "avg_logprob",
+    uncertainty_score_weights: dict[str, float] | None = None,
+    selective_enabled: bool = False,
+    selective_threshold: float = -2.0,
+    selective_ood_delta: float = 0.0,
+    selective_refusal_text: str = "I'm not confident enough to answer this reliably.",
 ) -> dict[str, Any]:
     question = str(sample.get("question", ""))
     dataset = str(sample.get("dataset", ""))
@@ -350,24 +359,55 @@ def generate_single_sample(
         logprob_last_k=logprob_last_k,
     )
     prediction = str(generation["prediction_raw"])
+    split_type = str(sample.get("split_type", "id")).lower()
+
+    confidence_score: float | None = None
+    if uncertainty_enabled:
+        confidence_score = compute_confidence_score(
+            row=generation,
+            score_type=uncertainty_score_type,
+            last_k=logprob_last_k,
+            score_weights=uncertainty_score_weights,
+        )
+
+    threshold_used: float | None = None
+    abstained = False
+    abstain_reason = "selective_disabled"
+    prediction_final = prediction
+    if selective_enabled:
+        threshold_used = threshold_for_split(
+            base_threshold=float(selective_threshold),
+            split_type=split_type,
+            ood_delta=float(selective_ood_delta),
+        )
+        abstained, abstain_reason = apply_abstention(
+            confidence_score=confidence_score,
+            threshold=threshold_used,
+        )
+        if abstained:
+            prediction_final = str(selective_refusal_text)
 
     return {
         "id": str(sample.get("id", "")),
         "dataset": dataset,
         "question": question,
-        "split_type": str(sample.get("split_type", "id")).lower(),
+        "split_type": split_type,
         **reference_fields,
         "mode": mode,
         "prediction_raw": prediction,
-        # Backward-compatible field used by current eval scripts.
-        "prediction": prediction,
-        "prediction_final": prediction,
+        # Backward-compatible field used by current eval scripts; now reflects final visible output.
+        "prediction": prediction_final,
+        "prediction_final": prediction_final,
         "generated_token_ids": generation["generated_token_ids"],
         "token_logprobs": generation["token_logprobs"],
         "avg_logprob": generation["avg_logprob"],
         "min_logprob": generation["min_logprob"],
         "last_k_avg_logprob": generation["last_k_avg_logprob"],
         "length_normalized_nll": generation["length_normalized_nll"],
+        "confidence_score": confidence_score,
+        "threshold_used": threshold_used,
+        "abstained": abstained,
+        "abstain_reason": abstain_reason,
         "retrieved_docs": retrieved_docs if mode in {"rag", "sft_rag"} else [],
         "retrieval_debug": retrieval_debug if mode in {"rag", "sft_rag"} else None,
     }
